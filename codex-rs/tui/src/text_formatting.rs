@@ -48,14 +48,15 @@ pub(crate) fn format_xml_thinking_blocks(text: &str) -> String {
                             let abs_closing_pos = pos + closing_pos;
                             let block_content = text[pos..abs_closing_pos].trim();
 
-                            // Render the thinking block with proper borders
-                            result.push('\n');
-                            result.push_str("╭─ 💭 Thinking ");
-                            result.push_str(&"─".repeat(BOX_WIDTH - 16));
-                            result.push_str("╮\n");
-
-                            // Wrap and render content
+                            // Only render if there's actual content
                             if !block_content.is_empty() {
+                                // Render the thinking block with proper borders
+                                result.push('\n');
+                                result.push_str("╭─ 💭 Thinking ");
+                                result.push_str(&"─".repeat(BOX_WIDTH - 16));
+                                result.push_str("╮\n");
+
+                                // Wrap and render content
                                 for line in textwrap::wrap(block_content, CONTENT_WIDTH) {
                                     result.push_str("│ ");
                                     result.push_str(&line);
@@ -64,11 +65,11 @@ pub(crate) fn format_xml_thinking_blocks(text: &str) -> String {
                                     result.push_str(&" ".repeat(padding));
                                     result.push_str(" │\n");
                                 }
-                            }
 
-                            result.push('╰');
-                            result.push_str(&"─".repeat(BOX_WIDTH - 2));
-                            result.push_str("╯\n");
+                                result.push('╰');
+                                result.push_str(&"─".repeat(BOX_WIDTH - 2));
+                                result.push_str("╯\n");
+                            }
 
                             // Skip past the closing tag
                             pos = abs_closing_pos + closing_tag.len();

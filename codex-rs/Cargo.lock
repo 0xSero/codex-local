@@ -547,6 +547,12 @@ dependencies = [
 
 [[package]]
 name = "base64"
+version = "0.21.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9d297deb1925b89f2ccc13d7635fa0714f12c87adce1c75356b39ca9b7178567"
+
+[[package]]
+name = "base64"
 version = "0.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
@@ -833,7 +839,7 @@ dependencies = [
  "anyhow",
  "app_test_support",
  "assert_cmd",
- "base64",
+ "base64 0.22.1",
  "codex-app-server-protocol",
  "codex-arg0",
  "codex-common",
@@ -975,7 +981,7 @@ version = "1.0.0-local-26f7c468"
 dependencies = [
  "anyhow",
  "async-trait",
- "base64",
+ "base64 0.22.1",
  "chrono",
  "clap",
  "codex-cloud-tasks-client",
@@ -1032,7 +1038,7 @@ dependencies = [
  "assert_matches",
  "async-channel",
  "async-trait",
- "base64",
+ "base64 0.22.1",
  "bytes",
  "chrono",
  "codex-app-server-protocol",
@@ -1195,7 +1201,7 @@ name = "codex-login"
 version = "1.0.0-local-26f7c468"
 dependencies = [
  "anyhow",
- "base64",
+ "base64 0.22.1",
  "chrono",
  "codex-app-server-protocol",
  "codex-core",
@@ -1303,7 +1309,7 @@ name = "codex-protocol"
 version = "1.0.0-local-26f7c468"
 dependencies = [
  "anyhow",
- "base64",
+ "base64 0.22.1",
  "icu_decimal",
  "icu_locale_core",
  "mcp-types",
@@ -1380,7 +1386,7 @@ dependencies = [
  "arboard",
  "assert_matches",
  "async-stream",
- "base64",
+ "base64 0.22.1",
  "chrono",
  "clap",
  "codex-ansi-escape",
@@ -1420,6 +1426,7 @@ dependencies = [
  "supports-color",
  "tempfile",
  "textwrap 0.16.2",
+ "tiktoken-rs",
  "tokio",
  "tokio-stream",
  "tracing",
@@ -2243,6 +2250,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "fancy-regex"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "531e46835a22af56d1e3b66f04844bed63158bc094a628bec1d321d9b4c44bf2"
+dependencies = [
+ "bit-set",
+ "regex-automata",
+ "regex-syntax 0.8.5",
+]
+
+[[package]]
 name = "fastrand"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2789,7 +2807,7 @@ version = "0.1.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d9b05277c7e8da2c93a568989bb6207bef0112e8d17df7a6eda4a3cf143bc5e"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "bytes",
  "futures-channel",
  "futures-core",
@@ -3779,7 +3797,7 @@ version = "5.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "51e219e79014df21a225b1860a479e2dcd7cbd9130f4defd4bd0e191ea31d67d"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "chrono",
  "getrandom 0.2.16",
  "http",
@@ -4006,7 +4024,7 @@ version = "0.30.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2e046fd7660710fe5a05e8748e70d9058dc15c94ba914e7c4faa7c728f0e8ddc"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "hex",
  "opentelemetry",
  "opentelemetry_sdk",
@@ -4218,7 +4236,7 @@ version = "1.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3af6b589e163c5a788fab00ce0c0366f6efbb9959c2f9874b224936af7fce7e1"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "indexmap 2.10.0",
  "quick-xml",
  "serde",
@@ -4468,7 +4486,7 @@ dependencies = [
  "pin-project-lite",
  "quinn-proto",
  "quinn-udp",
- "rustc-hash",
+ "rustc-hash 2.1.1",
  "rustls",
  "socket2 0.6.0",
  "thiserror 2.0.16",
@@ -4488,7 +4506,7 @@ dependencies = [
  "lru-slab",
  "rand 0.9.2",
  "ring",
- "rustc-hash",
+ "rustc-hash 2.1.1",
  "rustls",
  "rustls-pki-types",
  "slab",
@@ -4714,7 +4732,7 @@ version = "0.12.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d429f34c8092b2d42c7c93cec323bb4adeb7c67698f70839adec842ec10c7ceb"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "bytes",
  "encoding_rs",
  "futures-channel",
@@ -4777,7 +4795,7 @@ version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6f35acda8f89fca5fd8c96cae3c6d5b4c38ea0072df4c8030915f3b5ff469c1c"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "bytes",
  "chrono",
  "futures",
@@ -4823,6 +4841,12 @@ name = "rustc-demangle"
 version = "0.1.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "989e6739f80c4ad5b13e0fd7fe89531180375b18520cc8c82080e4dc4035b84f"
+
+[[package]]
+name = "rustc-hash"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
 
 [[package]]
 name = "rustc-hash"
@@ -5248,7 +5272,7 @@ version = "3.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2c45cd61fefa9db6f254525d46e392b852e0e61d9a1fd36e5bd183450a556d5"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "chrono",
  "hex",
  "indexmap 1.9.3",
@@ -5860,6 +5884,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "tiktoken-rs"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "44075987ee2486402f0808505dd65692163d243a337fc54363d49afac41087f6"
+dependencies = [
+ "anyhow",
+ "base64 0.21.7",
+ "bstr",
+ "fancy-regex",
+ "lazy_static",
+ "parking_lot",
+ "regex",
+ "rustc-hash 1.1.0",
+]
+
+[[package]]
 name = "time"
 version = "0.3.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6087,7 +6127,7 @@ checksum = "7e581ba15a835f4d9ea06c55ab1bd4dce26fc53752c69a04aac00703bfb49ba9"
 dependencies = [
  "async-trait",
  "axum",
- "base64",
+ "base64 0.22.1",
  "bytes",
  "h2",
  "http",
@@ -7164,7 +7204,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "08db1edfb05d9b3c1542e521aea074442088292f00b5f28e435c714a98f85031"
 dependencies = [
  "assert-json-diff",
- "base64",
+ "base64 0.22.1",
  "deadpool",
  "futures",
  "http",

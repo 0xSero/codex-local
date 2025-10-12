@@ -264,6 +264,11 @@ pub(crate) struct ChatWidget {
     needs_final_message_separator: bool,
 
     last_rendered_width: std::cell::Cell<Option<usize>>,
+
+    // Token tracking for codex-local
+    session_input_tokens: u64,
+    session_output_tokens: u64,
+    current_turn_input_tokens: u64,
 }
 
 struct UserMessage {
@@ -441,12 +446,26 @@ impl ChatWidget {
             self.token_info = Some(info);
         } else {
             // Fallback: Show config values even when model doesn't send token info
-            if let Some(context_window) = self.config.model_context_window {
-                // Start with 100% available
-                self.bottom_pane.set_context_window_percent(Some(100));
-                // Show max tokens from config, with 0 used initially
-                self.bottom_pane.set_context_tokens(Some(0), Some(context_window), Some(0));
-            }
+            self.update_token_display();
+        }
+    }
+
+    /// Update token display with client-side tracked tokens
+    fn update_token_display(&mut self) {
+        if let Some(context_window) = self.config.model_context_window {
+            let total_tokens = self.session_input_tokens + self.session_output_tokens;
+            let percent = if context_window > 0 {
+                ((context_window - total_tokens as u64).saturating_mul(100) / context_window) as u8
+            } else {
+                100
+            };
+
+            self.bottom_pane.set_context_window_percent(Some(percent));
+            self.bottom_pane.set_context_tokens(
+                Some(total_tokens),
+                Some(context_window),
+                Some(self.session_input_tokens + self.session_output_tokens)
+            );
         }
     }
 
@@ -970,6 +989,9 @@ impl ChatWidget {
             ghost_snapshots_disabled: true,
             needs_final_message_separator: false,
             last_rendered_width: std::cell::Cell::new(None),
+            session_input_tokens: 0,
+            session_output_tokens: 0,
+            current_turn_input_tokens: 0,
         };
 
         // Initialize token display with config values
@@ -1039,6 +1061,9 @@ impl ChatWidget {
             ghost_snapshots_disabled: true,
             needs_final_message_separator: false,
             last_rendered_width: std::cell::Cell::new(None),
+            session_input_tokens: 0,
+            session_output_tokens: 0,
+            current_turn_input_tokens: 0,
         }
     }
 
@@ -2244,6 +2269,15 @@ impl ChatWidget {
         if text.is_empty() {
             return;
         }
+
+        // Track input tokens
+        let input_tokens = crate::token_counter::count_tokens(&text, &self.config.model) as u64;
+        self.session_input_tokens += input_tokens;
+        self.current_turn_input_tokens = input_tokens;
+
+        // Update token display
+        self.update_token_display();
+
         self.submit_user_message(text.into());
     }
 

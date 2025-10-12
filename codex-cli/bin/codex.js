@@ -87,9 +87,18 @@ if (existsSync(pathDir)) {
 }
 const updatedPath = getUpdatedPath(additionalDirs);
 
+// Use a custom config directory for codex-local to avoid conflicts
+const codexConfigHome = path.join(process.env.HOME || process.env.USERPROFILE, ".codex-local");
+
 const child = spawn(binaryPath, process.argv.slice(2), {
   stdio: "inherit",
-  env: { ...process.env, PATH: updatedPath, CODEX_MANAGED_BY_NPM: "1" },
+  env: {
+    ...process.env,
+    PATH: updatedPath,
+    CODEX_MANAGED_BY_NPM: "1",
+    CODEX_CONFIG_HOME: codexConfigHome,
+    CODEX_HOME: codexConfigHome
+  },
 });
 
 child.on("error", (err) => {

@@ -18,6 +18,9 @@ pub(crate) struct FooterProps {
     pub(crate) use_shift_enter_hint: bool,
     pub(crate) is_task_running: bool,
     pub(crate) context_window_percent: Option<u8>,
+    pub(crate) context_tokens_used: Option<u64>,
+    pub(crate) context_tokens_max: Option<u64>,
+    pub(crate) total_tokens_session: Option<u64>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -81,7 +84,7 @@ fn footer_lines(props: FooterProps) -> Vec<Line<'static>> {
             is_task_running: props.is_task_running,
         })],
         FooterMode::ShortcutSummary => {
-            let mut line = context_window_line(props.context_window_percent);
+            let mut line = context_window_line(&props);
             line.push_span(" · ".dim());
             line.extend(vec![
                 key_hint::plain(KeyCode::Char('?')).into(),
@@ -94,7 +97,7 @@ fn footer_lines(props: FooterProps) -> Vec<Line<'static>> {
             esc_backtrack_hint: props.esc_backtrack_hint,
         }),
         FooterMode::EscHint => vec![esc_hint_line(props.esc_backtrack_hint)],
-        FooterMode::ContextOnly => vec![context_window_line(props.context_window_percent)],
+        FooterMode::ContextOnly => vec![context_window_line(&props)],
     }
 }
 
@@ -221,9 +224,28 @@ fn build_columns(entries: Vec<Line<'static>>) -> Vec<Line<'static>> {
         .collect()
 }
 
-fn context_window_line(percent: Option<u8>) -> Line<'static> {
-    let percent = percent.unwrap_or(100);
-    Line::from(vec![Span::from(format!("{percent}% context left")).dim()])
+fn context_window_line(props: &FooterProps) -> Line<'static> {
+    let percent = props.context_window_percent.unwrap_or(100);
+
+    // Build detailed context info if token data is available
+    let text = if let (Some(used), Some(max)) = (props.context_tokens_used, props.context_tokens_max) {
+        let remaining = max.saturating_sub(used);
+        let total_session = props.total_tokens_session.unwrap_or(used);
+        format!(
+            "{}% context left · {}/{} tokens ({}K used, {}K remaining, {}K total session)",
+            percent,
+            used / 1000,
+            max / 1000,
+            used / 1000,
+            remaining / 1000,
+            total_session / 1000
+        )
+    } else {
+        // Fallback to simple percentage display
+        format!("{percent}% context left")
+    };
+
+    Line::from(vec![Span::from(text).dim()])
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -400,6 +422,9 @@ mod tests {
                 use_shift_enter_hint: false,
                 is_task_running: false,
                 context_window_percent: None,
+                context_tokens_used: None,
+                context_tokens_max: None,
+                total_tokens_session: None,
             },
         );
 
@@ -411,6 +436,9 @@ mod tests {
                 use_shift_enter_hint: true,
                 is_task_running: false,
                 context_window_percent: None,
+                context_tokens_used: None,
+                context_tokens_max: None,
+                total_tokens_session: None,
             },
         );
 
@@ -422,6 +450,9 @@ mod tests {
                 use_shift_enter_hint: false,
                 is_task_running: false,
                 context_window_percent: None,
+                context_tokens_used: None,
+                context_tokens_max: None,
+                total_tokens_session: None,
             },
         );
 
@@ -433,6 +464,9 @@ mod tests {
                 use_shift_enter_hint: false,
                 is_task_running: true,
                 context_window_percent: None,
+                context_tokens_used: None,
+                context_tokens_max: None,
+                total_tokens_session: None,
             },
         );
 
@@ -444,6 +478,9 @@ mod tests {
                 use_shift_enter_hint: false,
                 is_task_running: false,
                 context_window_percent: None,
+                context_tokens_used: None,
+                context_tokens_max: None,
+                total_tokens_session: None,
             },
         );
 
@@ -455,6 +492,9 @@ mod tests {
                 use_shift_enter_hint: false,
                 is_task_running: false,
                 context_window_percent: None,
+                context_tokens_used: None,
+                context_tokens_max: None,
+                total_tokens_session: None,
             },
         );
 
@@ -466,6 +506,9 @@ mod tests {
                 use_shift_enter_hint: false,
                 is_task_running: true,
                 context_window_percent: Some(72),
+                context_tokens_used: Some(33600),
+                context_tokens_max: Some(120000),
+                total_tokens_session: Some(45000),
             },
         );
     }

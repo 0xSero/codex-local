@@ -2,6 +2,123 @@ use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthChar;
 use unicode_width::UnicodeWidthStr;
 
+/// Format XML thinking blocks with special styling
+/// Detects <think>, <thinking>, and other XML tags and formats them nicely
+pub(crate) fn format_xml_thinking_blocks(text: &str) -> String {
+    // Common XML thinking tags used by models
+    const THINKING_TAGS: &[&str] = &["think", "thinking", "thought", "reasoning", "internal"];
+
+    let mut result = String::new();
+    let mut chars = text.chars().peekable();
+    let mut in_tag = false;
+    let mut current_tag = String::new();
+    let mut tag_content = String::new();
+    let mut is_closing_tag = false;
+
+    while let Some(ch) = chars.next() {
+        if ch == '<' {
+            // Start of potential XML tag
+            in_tag = true;
+            current_tag.clear();
+            is_closing_tag = false;
+
+            // Check if it's a closing tag
+            if let Some(&'/') = chars.peek() {
+                is_closing_tag = true;
+                chars.next(); // consume '/'
+            }
+
+            // Read tag name
+            while let Some(&next_ch) = chars.peek() {
+                if next_ch == '>' || next_ch == ' ' {
+                    break;
+                }
+                current_tag.push(next_ch);
+                chars.next();
+            }
+
+            // Consume until '>'
+            while let Some(&next_ch) = chars.peek() {
+                if next_ch == '>' {
+                    chars.next();
+                    break;
+                }
+                chars.next();
+            }
+
+            // Check if this is a thinking tag
+            if THINKING_TAGS.contains(&current_tag.to_lowercase().as_str()) {
+                if !is_closing_tag {
+                    // Opening tag - add formatted header
+                    result.push_str("\n╭─ 💭 Thinking ");
+                    result.push_str(&"─".repeat(60));
+                    result.push_str("╮\n│ ");
+                    tag_content.clear();
+                } else {
+                    // Closing tag - add formatted footer
+                    if !tag_content.is_empty() {
+                        // Add the content with proper line wrapping
+                        for line in tag_content.lines() {
+                            result.push_str("│ ");
+                            result.push_str(line);
+                            result.push('\n');
+                        }
+                    }
+                    result.push_str("╰");
+                    result.push_str(&"─".repeat(70));
+                    result.push_str("╯\n");
+                    tag_content.clear();
+                }
+                in_tag = false;
+                continue;
+            }
+
+            // Not a thinking tag, keep original
+            result.push('<');
+            if is_closing_tag {
+                result.push('/');
+            }
+            result.push_str(&current_tag);
+            result.push('>');
+            in_tag = false;
+        } else if !tag_content.is_empty() || (in_tag && THINKING_TAGS.contains(&current_tag.to_lowercase().as_str())) {
+            // We're inside a thinking block
+            tag_content.push(ch);
+        } else {
+            result.push(ch);
+        }
+    }
+
+    // If there's any remaining tag content, flush it
+    if !tag_content.is_empty() {
+        for line in tag_content.lines() {
+            result.push_str("│ ");
+            result.push_str(line);
+            result.push('\n');
+        }
+    }
+
+    result
+}
+
+/// Format text that might contain XML thinking blocks or reasoning content
+/// This is a convenience wrapper that tries XML formatting first
+pub(crate) fn format_reasoning_content(text: &str) -> String {
+    // Check if the text contains XML thinking tags
+    let lower = text.to_lowercase();
+    if lower.contains("<think>") || lower.contains("<thinking>") ||
+       lower.contains("<thought>") || lower.contains("<reasoning>") {
+        format_xml_thinking_blocks(text)
+    } else {
+        // No XML tags, return as-is but maybe with a subtle indicator
+        if text.trim().len() > 20 {
+            format!("💭 {}", text)
+        } else {
+            text.to_string()
+        }
+    }
+}
+
 /// Truncate a tool result to fit within the given height and width. If the text is valid JSON, we format it in a compact way before truncating.
 /// This is a best-effort approach that may not work perfectly for text where 1 grapheme is rendered as multiple terminal cells.
 pub(crate) fn format_and_truncate_tool_result(

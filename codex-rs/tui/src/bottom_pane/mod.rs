@@ -69,6 +69,9 @@ pub(crate) struct BottomPane {
     /// Queued user messages to show under the status indicator.
     queued_user_messages: Vec<String>,
     context_window_percent: Option<u8>,
+    context_tokens_used: Option<u64>,
+    context_tokens_max: Option<u64>,
+    total_tokens_session: Option<u64>,
 }
 
 pub(crate) struct BottomPaneParams {
@@ -102,6 +105,9 @@ impl BottomPane {
             queued_user_messages: Vec::new(),
             esc_backtrack_hint: false,
             context_window_percent: None,
+            context_tokens_used: None,
+            context_tokens_max: None,
+            total_tokens_session: None,
         }
     }
 
@@ -357,6 +363,14 @@ impl BottomPane {
 
         self.context_window_percent = percent;
         self.composer.set_context_window_percent(percent);
+        self.request_redraw();
+    }
+
+    pub(crate) fn set_context_tokens(&mut self, used: Option<u64>, max: Option<u64>, total_session: Option<u64>) {
+        self.context_tokens_used = used;
+        self.context_tokens_max = max;
+        self.total_tokens_session = total_session;
+        self.composer.set_context_tokens(used, max, total_session);
         self.request_redraw();
     }
 

@@ -431,6 +431,13 @@ impl ChatWidget {
                     .percent_of_context_window_remaining(window)
             });
             self.bottom_pane.set_context_window_percent(percent);
+
+            // Pass detailed token information to footer
+            let used_tokens = Some(info.last_token_usage.tokens_in_context_window());
+            let max_tokens = context_window;
+            let total_session_tokens = Some(info.total_token_usage.total_tokens);
+            self.bottom_pane.set_context_tokens(used_tokens, max_tokens, total_session_tokens);
+
             self.token_info = Some(info);
         }
     }

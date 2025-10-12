@@ -14,6 +14,7 @@ use crate::render::line_utils::prefix_lines;
 use crate::render::line_utils::push_owned_lines;
 use crate::style::user_message_style;
 use crate::text_formatting::format_and_truncate_tool_result;
+use crate::text_formatting::format_reasoning_content;
 use crate::text_formatting::truncate_text;
 use crate::ui_consts::LIVE_PREFIX_COLS;
 use crate::wrapping::RtOptions;
@@ -1181,6 +1182,9 @@ pub(crate) fn new_reasoning_summary_block(
     full_reasoning_buffer: String,
     config: &Config,
 ) -> Box<dyn HistoryCell> {
+    // Apply XML thinking block formatting
+    let formatted_buffer = format_reasoning_content(&full_reasoning_buffer);
+
     if config.model_family.reasoning_summary_format == ReasoningSummaryFormat::Experimental {
         // Experimental format is following:
         // ** header **
@@ -1188,7 +1192,7 @@ pub(crate) fn new_reasoning_summary_block(
         // reasoning summary
         //
         // So we need to strip header from reasoning summary
-        let full_reasoning_buffer = full_reasoning_buffer.trim();
+        let full_reasoning_buffer = formatted_buffer.trim();
         if let Some(open) = full_reasoning_buffer.find("**") {
             let after_open = &full_reasoning_buffer[(open + 2)..];
             if let Some(close) = after_open.find("**") {
@@ -1210,7 +1214,7 @@ pub(crate) fn new_reasoning_summary_block(
     }
     Box::new(ReasoningSummaryCell::new(
         "".to_string(),
-        full_reasoning_buffer,
+        formatted_buffer,
         config.into(),
         true,
     ))

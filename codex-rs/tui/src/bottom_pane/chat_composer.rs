@@ -109,6 +109,9 @@ pub(crate) struct ChatComposer {
     footer_mode: FooterMode,
     footer_hint_override: Option<Vec<(String, String)>>,
     context_window_percent: Option<u8>,
+    context_tokens_used: Option<u64>,
+    context_tokens_max: Option<u64>,
+    total_tokens_session: Option<u64>,
 }
 
 /// Popup state – at most one can be visible at any time.
@@ -152,6 +155,9 @@ impl ChatComposer {
             footer_mode: FooterMode::ShortcutSummary,
             footer_hint_override: None,
             context_window_percent: None,
+            context_tokens_used: None,
+            context_tokens_max: None,
+            total_tokens_session: None,
         };
         // Apply configuration via the setter to keep side-effects centralized.
         this.set_disable_paste_burst(disable_paste_burst);
@@ -1341,6 +1347,9 @@ impl ChatComposer {
             use_shift_enter_hint: self.use_shift_enter_hint,
             is_task_running: self.is_task_running,
             context_window_percent: self.context_window_percent,
+            context_tokens_used: self.context_tokens_used,
+            context_tokens_max: self.context_tokens_max,
+            total_tokens_session: self.total_tokens_session,
         }
     }
 
@@ -1475,6 +1484,12 @@ impl ChatComposer {
         if self.context_window_percent != percent {
             self.context_window_percent = percent;
         }
+    }
+
+    pub(crate) fn set_context_tokens(&mut self, used: Option<u64>, max: Option<u64>, total_session: Option<u64>) {
+        self.context_tokens_used = used;
+        self.context_tokens_max = max;
+        self.total_tokens_session = total_session;
     }
 
     pub(crate) fn set_esc_backtrack_hint(&mut self, show: bool) {

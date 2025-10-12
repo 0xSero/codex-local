@@ -1,9 +1,9 @@
 {
   "name": "@openai/codex",
-  "version": "0.0.0-dev",
+  "version": "1.0.0-local-26f7c468",
   "license": "Apache-2.0",
   "bin": {
-    "codex": "bin/codex.js"
+    "codex-local": "bin/codex.js"
   },
   "type": "module",
   "engines": {

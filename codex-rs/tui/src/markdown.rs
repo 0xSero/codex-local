@@ -1,3 +1,4 @@
+use crate::text_formatting::format_reasoning_content;
 use codex_core::config::Config;
 use codex_core::config_types::UriBasedFileOpener;
 use ratatui::text::Line;
@@ -47,9 +48,12 @@ pub(crate) fn append_markdown_with_opener_and_cwd(
     file_opener: UriBasedFileOpener,
     cwd: &Path,
 ) {
+    // Apply XML thinking block formatting before markdown rendering
+    let formatted_source = format_reasoning_content(markdown_source);
+
     // Render via pulldown-cmark and rewrite citations during traversal (outside code blocks).
     let rendered = crate::markdown_render::render_markdown_text_with_citations(
-        markdown_source,
+        &formatted_source,
         width,
         file_opener.get_scheme(),
         cwd,

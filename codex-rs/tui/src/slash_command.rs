@@ -25,6 +25,14 @@ pub enum SlashCommand {
     Mcp,
     Logout,
     Quit,
+    // Codex-Local custom commands
+    Config,
+    Context,
+    Tokens,
+    Provider,
+    Models,
+    CompactSettings,
+    Think,
     #[cfg(debug_assertions)]
     TestApproval,
 }
@@ -46,6 +54,14 @@ impl SlashCommand {
             SlashCommand::Approvals => "choose what Codex can do without approval",
             SlashCommand::Mcp => "list configured MCP tools",
             SlashCommand::Logout => "log out of Codex",
+            // Codex-Local custom commands
+            SlashCommand::Config => "view and edit codex-local configuration",
+            SlashCommand::Context => "set context window size (current: 120K tokens)",
+            SlashCommand::Tokens => "set max output tokens (current: 64K tokens)",
+            SlashCommand::Provider => "configure API provider and endpoint",
+            SlashCommand::Models => "list available models from /v1/models endpoint",
+            SlashCommand::CompactSettings => "configure auto-compaction settings",
+            SlashCommand::Think => "toggle XML thinking block rendering",
             #[cfg(debug_assertions)]
             SlashCommand::TestApproval => "test approval request",
         }
@@ -72,7 +88,15 @@ impl SlashCommand {
             | SlashCommand::Mention
             | SlashCommand::Status
             | SlashCommand::Mcp
-            | SlashCommand::Quit => true,
+            | SlashCommand::Quit
+            // Codex-Local custom commands - all viewable during task
+            | SlashCommand::Config
+            | SlashCommand::Context
+            | SlashCommand::Tokens
+            | SlashCommand::Provider
+            | SlashCommand::Models
+            | SlashCommand::CompactSettings
+            | SlashCommand::Think => true,
 
             #[cfg(debug_assertions)]
             SlashCommand::TestApproval => true,

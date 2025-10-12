@@ -456,7 +456,7 @@ impl ChatWidget {
         if let Some(context_window) = self.config.model_context_window {
             let total_tokens = self.session_input_tokens + self.session_output_tokens;
             let percent = if context_window > 0 {
-                ((context_window - total_tokens as u64).saturating_mul(100) / context_window) as u8
+                ((context_window - total_tokens).saturating_mul(100) / context_window) as u8
             } else {
                 100
             };
@@ -2047,8 +2047,8 @@ impl ChatWidget {
     fn add_compact_settings_info(&mut self) {
         let limit = self.config.model_auto_compact_token_limit;
         let context = self.config.model_context_window.unwrap_or(0);
-        let percentage = if context > 0 && limit.is_some() {
-            format!("{}%", (limit.unwrap() * 100) / context as i64)
+        let percentage = if let (Some(limit), true) = (limit, context > 0) {
+            format!("{}%", (limit * 100) / context as i64)
         } else {
             "N/A".to_string()
         };
@@ -2061,7 +2061,7 @@ impl ChatWidget {
             Use: `codex-local -c model_auto_compact_token_limit=<tokens>` to override",
             limit
                 .map(|n| n.to_string())
-                .unwrap_or("disabled".to_string()),
+                .unwrap_or_else(|| "disabled".to_string()),
             percentage.clone(),
             context,
             percentage

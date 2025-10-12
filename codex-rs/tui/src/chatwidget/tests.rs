@@ -289,6 +289,9 @@ fn make_chatwidget_manual() -> (
         ghost_snapshots_disabled: false,
         needs_final_message_separator: false,
         last_rendered_width: std::cell::Cell::new(None),
+        session_input_tokens: 0,
+        session_output_tokens: 0,
+        current_turn_input_tokens: 0,
     };
     (widget, rx, op_rx)
 }

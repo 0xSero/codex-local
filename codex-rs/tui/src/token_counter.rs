@@ -3,16 +3,17 @@ use tiktoken_rs::cl100k_base;
 
 /// Count tokens in text using the appropriate tokenizer for the model
 pub fn count_tokens(text: &str, _model: &str) -> usize {
-    // Use cl100k_base for GPT-4, GPT-3.5-turbo, and similar models
-    // This is a good default that works for most modern LLMs
-    let bpe = cl100k_base().unwrap_or_else(|_| {
-        // Fallback: rough estimate if tokenizer fails
-        // Average English word is about 1.3 tokens
-        // Just count whitespace-separated words * 1.3
-        return cl100k_base().expect("cl100k_base should always work");
-    });
-
-    bpe.encode_ordinary(text).len()
+    // Use cl100k_base for GPT-4, GPT-3.5-turbo, and similar models.
+    // This is a good default that works for most modern LLMs.
+    if let Ok(bpe) = cl100k_base() {
+        bpe.encode_ordinary(text).len()
+    } else {
+        // Fallback: rough estimate if tokenizer fails. Average English word is ~1.3 tokens.
+        let word_count = text.split_whitespace().count();
+        let estimated = (word_count as f32 * 1.3).ceil() as usize;
+        // Avoid returning zero when the text contains whitespace only.
+        estimated.max(word_count)
+    }
 }
 
 /// Estimate tokens for a message with role
@@ -36,13 +37,13 @@ mod tests {
         let text = "Hello, world! This is a test.";
         let count = count_tokens(text, "gpt-4");
         // Should be around 8-10 tokens
-        assert!(count > 5 && count < 15, "Token count: {}", count);
+        assert!(count > 5 && count < 15, "Token count: {count}");
     }
 
     #[test]
     fn test_estimate_message_tokens() {
         let tokens = estimate_message_tokens("user", "Hello!", "gpt-4");
         // Should include overhead + role + content
-        assert!(tokens > 5, "Message tokens: {}", tokens);
+        assert!(tokens > 5, "Message tokens: {tokens}");
     }
 }

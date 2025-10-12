@@ -5,11 +5,10 @@
 //! of `-c key=value` (or `--config key=value`) will be collected as a raw
 //! string. Helper methods are provided to convert the raw strings into
 //! key/value pairs as well as to apply them onto a mutable
-//! `serde_json::Value` representing the configuration tree.
+//! `toml::Value` representing the configuration tree.
 
 use clap::ArgAction;
 use clap::Parser;
-use serde::de::Error as SerdeError;
 use toml::Value;
 
 /// CLI option that captures arbitrary configuration overrides specified as
@@ -19,8 +18,8 @@ use toml::Value;
 pub struct CliConfigOverrides {
     /// Override a configuration value that would otherwise be loaded from
     /// `~/.codex/config.toml`. Use a dotted path (`foo.bar.baz`) to override
-    /// nested values. The `value` portion is parsed as JSON. If it fails to
-    /// parse as JSON, the raw string is used as a literal.
+    /// nested values. The `value` portion is parsed as TOML. If it fails to
+    /// parse as TOML, the raw string is used as a literal.
     ///
     /// Examples:
     ///   - `-c model="o3"`
@@ -61,19 +60,19 @@ impl CliConfigOverrides {
     pub fn process_mcp_flags(&mut self) {
         // Add enable-mcp overrides
         for server_name in &self.enable_mcp {
-            let override_str = format!("mcp_servers.{}.enabled=true", { server_name });
+            let override_str = format!("mcp_servers.{server_name}.enabled=true");
             self.raw_overrides.push(override_str);
         }
 
         // Add disable-mcp overrides
         for server_name in &self.disable_mcp {
-            let override_str = format!("mcp_servers.{}.enabled=false", { server_name });
+            let override_str = format!("mcp_servers.{server_name}.enabled=false");
             self.raw_overrides.push(override_str);
         }
     }
 
     /// Parse the raw strings captured from the CLI into a list of `(path,
-    /// value)` tuples where `value` is a `serde_json::Value`.
+    /// value)` tuples where `value` is a `toml::Value`.
     pub fn parse_overrides(&self) -> Result<Vec<(String, Value)>, String> {
         self.raw_overrides
             .iter()
@@ -94,7 +93,7 @@ impl CliConfigOverrides {
                     return Err(format!("Empty key in override: {s}"));
                 }
 
-                // Attempt to parse as JSON. If that fails, treat it as a raw
+                // Attempt to parse as TOML. If that fails, treat it as a raw
                 // string. This allows convenient usage such as
                 // `-c model=o3` without the quotes.
                 let value: Value = match parse_toml_value(value_str) {
@@ -174,7 +173,7 @@ fn parse_toml_value(raw: &str) -> Result<Value, toml::de::Error> {
     table
         .get("_x_")
         .cloned()
-        .ok_or_else(|| SerdeError::custom("missing sentinel key"))
+        .ok_or_else(|| <toml::de::Error as serde::de::Error>::custom("missing sentinel key"))
 }
 
 #[cfg(all(test, feature = "cli"))]

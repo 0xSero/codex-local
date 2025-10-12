@@ -13,7 +13,7 @@ mod sandbox_mode_cli_arg;
 #[cfg(feature = "cli")]
 pub use sandbox_mode_cli_arg::SandboxModeCliArg;
 
-#[cfg(any(feature = "cli", test))]
+#[cfg(feature = "cli")]
 mod config_override;
 
 #[cfg(feature = "cli")]

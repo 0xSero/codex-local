@@ -28,8 +28,8 @@ pub(crate) fn format_xml_thinking_blocks(text: &str) -> String {
                 let tag_content = &text[abs_tag_start + 1..abs_tag_end];
 
                 // Check if it's a closing tag
-                if tag_content.starts_with('/') {
-                    let tag_name = tag_content[1..].trim().to_lowercase();
+                if let Some(stripped) = tag_content.strip_prefix('/') {
+                    let tag_name = stripped.trim().to_lowercase();
                     if THINKING_TAGS.contains(&tag_name.as_str()) {
                         // This is a closing thinking tag - skip it
                         pos = abs_tag_end + 1;
@@ -47,7 +47,7 @@ pub(crate) fn format_xml_thinking_blocks(text: &str) -> String {
                         pos = abs_tag_end + 1;
 
                         // Find the closing tag
-                        let closing_tag = format!("</{}>", tag_name);
+                        let closing_tag = format!("</{tag_name}>");
                         if let Some(closing_pos) = text[pos..].find(&closing_tag) {
                             let abs_closing_pos = pos + closing_pos;
                             let block_content = text[pos..abs_closing_pos].trim();
@@ -115,7 +115,7 @@ pub(crate) fn format_reasoning_content(text: &str) -> String {
     } else {
         // No XML tags, return as-is but maybe with a subtle indicator
         if text.trim().len() > 20 {
-            format!("💭 {}", text)
+            format!("💭 {text}")
         } else {
             text.to_string()
         }

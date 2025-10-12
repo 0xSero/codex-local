@@ -1,0 +1,6 @@
+---
+source: tui/src/bottom_pane/footer.rs
+assertion_line: 413
+expression: terminal.backend()
+---
+"  72% context left · 33/120 tokens (33K used, 86K remaining, 45K total session) "

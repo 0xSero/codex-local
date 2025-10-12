@@ -305,12 +305,35 @@ async fn exec(
         command, cwd, env, ..
     } = params;
 
-    let (program, args) = command.split_first().ok_or_else(|| {
-        CodexErr::Io(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "command args are empty",
-        ))
-    })?;
+    // Check if command contains shell operators (redirects, pipes, etc)
+    // If so, execute through shell to properly handle them
+    let has_shell_operators = command.iter().any(|arg| {
+        arg == ">" || arg == ">>" || arg == "<" ||
+        arg == "|" || arg == "&&" || arg == "||" ||
+        arg == "2>" || arg == "2>&1" || arg == "&"
+    });
+
+    let (program, args) = if has_shell_operators {
+        // Join all args into a single shell command string
+        let shell_cmd = command.join(" ");
+        // Execute via shell (sh on Unix, cmd.exe on Windows)
+        #[cfg(unix)]
+        let (prog, shell_args) = ("sh", vec!["-c".to_string(), shell_cmd]);
+        #[cfg(windows)]
+        let (prog, shell_args) = ("cmd.exe", vec!["/C".to_string(), shell_cmd]);
+
+        (prog, shell_args)
+    } else {
+        // Normal execution without shell
+        let (program, args) = command.split_first().ok_or_else(|| {
+            CodexErr::Io(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "command args are empty",
+            ))
+        })?;
+        (program.as_str(), args.to_vec())
+    };
+
     let arg0 = None;
     let child = spawn_child_async(
         PathBuf::from(program),

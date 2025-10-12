@@ -1188,6 +1188,28 @@ impl ChatWidget {
             SlashCommand::Mcp => {
                 self.add_mcp_output();
             }
+            // Codex-Local custom commands
+            SlashCommand::Config => {
+                self.add_config_output();
+            }
+            SlashCommand::Context => {
+                self.add_context_info();
+            }
+            SlashCommand::Tokens => {
+                self.add_tokens_info();
+            }
+            SlashCommand::Provider => {
+                self.add_provider_info();
+            }
+            SlashCommand::Models => {
+                self.add_models_list();
+            }
+            SlashCommand::CompactSettings => {
+                self.add_compact_settings_info();
+            }
+            SlashCommand::Think => {
+                self.add_think_toggle_info();
+            }
             #[cfg(debug_assertions)]
             SlashCommand::TestApproval => {
                 use codex_core::protocol::EventMsg;
@@ -1873,6 +1895,99 @@ impl ChatWidget {
         } else {
             self.submit_op(Op::ListMcpTools);
         }
+    }
+
+    // Codex-Local custom command implementations
+    fn add_config_output(&mut self) {
+        let config_info = format!(
+            "**Codex-Local Configuration**\n\n\
+            Model: `{}`\n\
+            Provider: `{}`\n\
+            Context Window: `{}` tokens\n\
+            Max Output: `{}` tokens\n\
+            Auto-Compact: `{}` tokens\n\
+            Config: `~/.codex-local/config.toml`",
+            self.config.model,
+            self.config.model_provider_id,
+            self.config.model_context_window.map(|n| n.to_string()).unwrap_or("unknown".to_string()),
+            self.config.model_max_output_tokens.map(|n| n.to_string()).unwrap_or("unknown".to_string()),
+            self.config.model_auto_compact_token_limit.map(|n| n.to_string()).unwrap_or("disabled".to_string())
+        );
+        self.add_info_message(config_info, None);
+    }
+
+    fn add_context_info(&mut self) {
+        let context = self.config.model_context_window.unwrap_or(0);
+        let info = format!(
+            "**Context Window**: `{}K` tokens\n\n\
+            Use: `codex-local -c model_context_window=<tokens>` to override",
+            context / 1000
+        );
+        self.add_info_message(info, None);
+    }
+
+    fn add_tokens_info(&mut self) {
+        let tokens = self.config.model_max_output_tokens.unwrap_or(0);
+        let info = format!(
+            "**Max Output Tokens**: `{}K` tokens\n\n\
+            Use: `codex-local -c model_max_output_tokens=<tokens>` to override",
+            tokens / 1000
+        );
+        self.add_info_message(info, None);
+    }
+
+    fn add_provider_info(&mut self) {
+        let provider_info = format!(
+            "**API Provider**\n\n\
+            Name: `{}`\n\
+            URL: `{}`\n\
+            Wire API: `{}`\n\n\
+            Use `codex-local-switch` to change provider settings",
+            self.config.model_provider.name,
+            self.config.model_provider.base_url,
+            match self.config.model_provider.wire_api {
+                codex_core::config::WireApi::Chat => "chat",
+                codex_core::config::WireApi::Responses => "responses",
+            }
+        );
+        self.add_info_message(provider_info, None);
+    }
+
+    fn add_models_list(&mut self) {
+        let info = "**Available Models**\n\nFetching models from `/v1/models` endpoint...\n\n\
+                    This feature will list all available models from your API provider.";
+        self.add_info_message(info.to_string(), None);
+    }
+
+    fn add_compact_settings_info(&mut self) {
+        let limit = self.config.model_auto_compact_token_limit;
+        let context = self.config.model_context_window.unwrap_or(0);
+        let percentage = if context > 0 && limit.is_some() {
+            format!("{}%", (limit.unwrap() * 100) / context as i64)
+        } else {
+            "N/A".to_string()
+        };
+
+        let info = format!(
+            "**Auto-Compaction Settings**\n\n\
+            Threshold: `{}` tokens ({})\n\
+            Context Window: `{}` tokens\n\n\
+            Compaction triggers at {} of context capacity.\n\
+            Use: `codex-local -c model_auto_compact_token_limit=<tokens>` to override",
+            limit.map(|n| n.to_string()).unwrap_or("disabled".to_string()),
+            percentage,
+            context
+        );
+        self.add_info_message(info, None);
+    }
+
+    fn add_think_toggle_info(&mut self) {
+        let info = "**XML Thinking Block Rendering**\n\n\
+                    Status: `Enabled`\n\n\
+                    XML tags like `<think>`, `<thinking>`, `<thought>`, `<reasoning>`, and `<internal>` \
+                    are rendered as beautiful bordered boxes.\n\n\
+                    This feature is always enabled in codex-local.";
+        self.add_info_message(info.to_string(), None);
     }
 
     /// Forward file-search results to the bottom pane.

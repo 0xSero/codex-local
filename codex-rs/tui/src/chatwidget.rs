@@ -809,6 +809,28 @@ impl ChatWidget {
     }
 
     pub(crate) fn handle_exec_approval_now(&mut self, id: String, ev: ExecApprovalRequestEvent) {
+        // Validate command array - skip if it looks malformed (e.g., from broken thinking block parsing)
+        // Check if command has shell operators as separate elements which indicates parsing error
+        let has_malformed_operators = ev.command.iter().any(|arg| {
+            // Detect shell operators that shouldn't be standalone array elements
+            // These indicate the API incorrectly parsed tool calls from thinking blocks
+            matches!(arg.as_str(), ">" | ">>" | "<" | "|" | "&&" | "||" | "2>" | "2>&1")
+        });
+
+        if has_malformed_operators {
+            tracing::warn!(
+                "Skipping malformed exec command with standalone shell operators: {:?}",
+                ev.command
+            );
+            // Add error message to history instead
+            self.flush_answer_stream_with_separator();
+            self.add_to_history(history_cell::new_error_event(
+                "Skipped malformed tool call (likely from thinking block)".to_string()
+            ));
+            self.request_redraw();
+            return;
+        }
+
         self.flush_answer_stream_with_separator();
         let command = shlex::try_join(ev.command.iter().map(String::as_str))
             .unwrap_or_else(|_| ev.command.join(" "));

@@ -1,104 +1,187 @@
-<p align="center"><code>npm i -g @openai/codex</code><br />or <code>brew install codex</code></p>
+# Codex-Local: Custom LLM Integration
 
-<p align="center"><strong>Codex CLI</strong> is a coding agent from OpenAI that runs locally on your computer.
-</br>
-</br>If you want Codex in your code editor (VS Code, Cursor, Windsurf), <a href="https://developers.openai.com/codex/ide">install in your IDE</a>
-</br>If you are looking for the <em>cloud-based agent</em> from OpenAI, <strong>Codex Web</strong>, go to <a href="https://chatgpt.com/codex">chatgpt.com/codex</a></p>
+Fork of OpenAI Codex CLI with custom model support and enhanced features.
 
-<p align="center">
-  <img src="./.github/codex-cli-splash.png" alt="Codex CLI splash" width="80%" />
-  </p>
+## Features
 
----
+### Custom LLM Support
+- **120K Context Window** - Extended context for longer conversations
+- **64K Output Tokens** - Large response capacity
+- **Auto-Compaction** - Triggers at 75% context usage (90K tokens)
+- **Custom API Provider** - Connect to any OpenAI-compatible endpoint
 
-## Quickstart
+### Enhanced UI
+- **Real-time Token Tracking** - See token usage as you chat
+- **XML Thinking Blocks** - Beautiful bordered rendering of `<think>`, `<thinking>`, `<reasoning>` tags
+- **Detailed Footer** - Shows: % left · current/max · used · remaining · session total
+- **7 Custom Slash Commands** - Quick access to settings and info
 
-### Installing and running Codex CLI
+### MCP Integration
+Includes 6 pre-configured MCP servers:
+- **brave-search** - Web search
+- **context7** - Library documentation
+- **image_recognition** - Z.AI image/video analysis
+- **memory** - Knowledge graph persistence
+- **puppeteer** - Browser automation
+- **supabase** - Database operations
 
-Install globally with your preferred package manager. If you use npm:
+## Installation
 
-```shell
-npm install -g @openai/codex
+```bash
+# Clone the repository
+git clone https://github.com/0xSero/codex-local.git
+cd codex-local
+
+# Build and install
+~/bin/codex-local-build
 ```
 
-Alternatively, if you use Homebrew:
+The build script:
+1. Builds Rust binaries in release mode
+2. Copies to vendor directory
+3. Runs `npm link` to install globally
 
-```shell
-brew install codex
+## Configuration
+
+Config file: `~/.codex-local/config.toml`
+
+### Example Configuration
+
+```toml
+model = "/mnt/llm_models/GLM-4.5-Air-AWQ-4bit"
+model_provider = "custom-glm"
+model_context_window = 120000
+model_max_output_tokens = 65536
+model_auto_compact_token_limit = 90000
+
+[model_providers.custom-glm]
+name = "Custom GLM"
+base_url = "https://your-api-endpoint.com/v1"
+wire_api = "chat"
+request_max_retries = 5
+stream_max_retries = 5
+stream_idle_timeout_ms = 300000
 ```
 
-Then simply run `codex` to get started:
+### Profiles
 
-```shell
-codex
+Create profiles for different use cases:
+
+```toml
+[profiles.glm-long]
+model_auto_compact_token_limit = 100000  # 83% context
+
+[profiles.glm-fast]
+model_context_window = 32000
+model_auto_compact_token_limit = 24000
 ```
 
-<details>
-<summary>You can also go to the <a href="https://github.com/openai/codex/releases/latest">latest GitHub Release</a> and download the appropriate binary for your platform.</summary>
+Use with: `codex-local -p glm-long`
 
-Each GitHub Release contains many executables, but in practice, you likely want one of these:
+## Slash Commands
 
-- macOS
-  - Apple Silicon/arm64: `codex-aarch64-apple-darwin.tar.gz`
-  - x86_64 (older Mac hardware): `codex-x86_64-apple-darwin.tar.gz`
-- Linux
-  - x86_64: `codex-x86_64-unknown-linux-musl.tar.gz`
-  - arm64: `codex-aarch64-unknown-linux-musl.tar.gz`
+Access settings and info during chat:
 
-Each archive contains a single entry with the platform baked into the name (e.g., `codex-x86_64-unknown-linux-musl`), so you likely want to rename it to `codex` after extracting it.
+- `/config` - View full configuration
+- `/context` - Show context window size
+- `/tokens` - Show max output tokens
+- `/provider` - Show API provider details
+- `/models` - Show model information
+- `/compact-settings` - Show auto-compaction settings
+- `/think` - Show XML rendering status
 
-</details>
+## Token Tracking
 
-### Using Codex with your ChatGPT plan
+Codex-local tracks tokens in real-time:
 
-<p align="center">
-  <img src="./.github/codex-cli-login.png" alt="Codex CLI login" width="80%" />
-  </p>
+### Input Tokens
+Counted automatically when you send messages using tiktoken (cl100k_base)
 
-Run `codex` and select **Sign in with ChatGPT**. We recommend signing into your ChatGPT account to use Codex as part of your Plus, Pro, Team, Edu, or Enterprise plan. [Learn more about what's included in your ChatGPT plan](https://help.openai.com/en/articles/11369540-codex-in-chatgpt).
+### Output Tokens
+Counted as the model streams responses back
 
-You can also use Codex with an API key, but this requires [additional setup](./docs/authentication.md#usage-based-billing-alternative-use-an-openai-api-key). If you previously used an API key for usage-based billing, see the [migration steps](./docs/authentication.md#migrating-from-usage-based-billing-api-key). If you're having trouble with login, please comment on [this issue](https://github.com/openai/codex/issues/1243).
+### Footer Display
+Shows live updates:
+```
+75% context left · 30/120 tokens (30K used, 90K remaining, 45K total session)
+```
 
-### Model Context Protocol (MCP)
+## Technical Details
 
-Codex can access MCP servers. To configure them, refer to the [config docs](./docs/config.md#mcp_servers).
+### Architecture
+- **Rust TUI** - Terminal UI built with Ratatui
+- **Tokio async** - Non-blocking I/O
+- **MCP Protocol** - Model Context Protocol for tool integrations
+- **OpenAI Compatible** - Works with any `/v1/chat/completions` endpoint
 
-### Configuration
+### Token Counting
+- Uses `tiktoken-rs` library
+- cl100k_base tokenizer (GPT-4 compatible)
+- Tracks per-message and session totals
+- Updates on every stream chunk
 
-Codex CLI supports a rich set of configuration options, with preferences stored in `~/.codex/config.toml`. For full configuration options, see [Configuration](./docs/config.md).
+### XML Rendering
+Custom parser for thinking blocks:
+- Detects `<think>`, `<thinking>`, `<thought>`, `<reasoning>`, `<internal>` tags
+- Renders as bordered boxes with proper text wrapping
+- 76-character fixed width for consistency
 
----
+## Development
 
-### Docs & FAQ
+### Build from Source
 
-- [**Getting started**](./docs/getting-started.md)
-  - [CLI usage](./docs/getting-started.md#cli-usage)
-  - [Running with a prompt as input](./docs/getting-started.md#running-with-a-prompt-as-input)
-  - [Example prompts](./docs/getting-started.md#example-prompts)
-  - [Memory with AGENTS.md](./docs/getting-started.md#memory-with-agentsmd)
-  - [Configuration](./docs/config.md)
-- [**Sandbox & approvals**](./docs/sandbox.md)
-- [**Authentication**](./docs/authentication.md)
-  - [Auth methods](./docs/authentication.md#forcing-a-specific-auth-method-advanced)
-  - [Login on a "Headless" machine](./docs/authentication.md#connecting-on-a-headless-machine)
-- **Automating Codex**
-  - [GitHub Action](https://github.com/openai/codex-action)
-  - [TypeScript SDK](./sdk/typescript/README.md)
-  - [Non-interactive mode (`codex exec`)](./docs/exec.md)
-- [**Advanced**](./docs/advanced.md)
-  - [Tracing / verbose logging](./docs/advanced.md#tracing--verbose-logging)
-  - [Model Context Protocol (MCP)](./docs/advanced.md#model-context-protocol-mcp)
-- [**Zero data retention (ZDR)**](./docs/zdr.md)
-- [**Contributing**](./docs/contributing.md)
-- [**Install & build**](./docs/install.md)
-  - [System Requirements](./docs/install.md#system-requirements)
-  - [DotSlash](./docs/install.md#dotslash)
-  - [Build from source](./docs/install.md#build-from-source)
-- [**FAQ**](./docs/faq.md)
-- [**Open source fund**](./docs/open-source-fund.md)
+```bash
+cd codex-rs
+cargo build --release --bin codex
+```
 
----
+### Run Tests
+
+```bash
+cargo test
+```
+
+### Project Structure
+
+```
+codex-local/
+├── codex-rs/          # Rust source code
+│   ├── tui/           # Terminal UI implementation
+│   ├── core/          # Core Codex logic
+│   ├── mcp-client/    # MCP integration
+│   └── ...
+├── codex-cli/         # npm wrapper
+│   └── vendor/        # Platform binaries
+└── README-CODEX-LOCAL.md
+```
+
+## Branch Information
+
+**Branch**: `local/llms`
+All custom modifications live here. Keep this branch separate from upstream updates.
+
+## Troubleshooting
+
+### Token counts not updating
+- Ensure you're on the `local/llms` branch
+- Rebuild: `~/bin/codex-local-build`
+- Check that tiktoken-rs compiled successfully
+
+### Thinking blocks look wrong
+- Terminal must support Unicode box-drawing characters
+- Try iTerm2 or Alacritty with `builtin_box_drawing` enabled
+
+### Model not responding
+- Check API endpoint in config: `base_url`
+- Verify API is reachable: `curl $base_url/v1/models`
+- Check logs: `~/.codex-local/log/codex-tui.log`
+
+## Credits
+
+- **Original Codex**: OpenAI
+- **Custom Fork**: 0xSero
+- **Enhancements**: Claude (token tracking, UI improvements, documentation)
 
 ## License
 
-This repository is licensed under the [Apache-2.0 License](LICENSE).
+Apache 2.0 (inherited from upstream Codex project)

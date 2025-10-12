@@ -5,96 +5,90 @@ use unicode_width::UnicodeWidthStr;
 /// Format XML thinking blocks with special styling
 /// Detects <think>, <thinking>, and other XML tags and formats them nicely
 pub(crate) fn format_xml_thinking_blocks(text: &str) -> String {
-    // Common XML thinking tags used by models
     const THINKING_TAGS: &[&str] = &["think", "thinking", "thought", "reasoning", "internal"];
+    const BOX_WIDTH: usize = 76; // Fixed width for consistent rendering
+    const CONTENT_WIDTH: usize = BOX_WIDTH - 4; // Account for "│ " on both sides
 
     let mut result = String::new();
-    let mut chars = text.chars().peekable();
-    let mut in_tag = false;
-    let mut current_tag = String::new();
-    let mut tag_content = String::new();
-    let mut is_closing_tag = false;
+    let mut pos = 0;
 
-    while let Some(ch) = chars.next() {
-        if ch == '<' {
-            // Start of potential XML tag
-            in_tag = true;
-            current_tag.clear();
-            is_closing_tag = false;
+    while pos < text.len() {
+        // Look for opening tag
+        if let Some(tag_start) = text[pos..].find('<') {
+            let abs_tag_start = pos + tag_start;
 
-            // Check if it's a closing tag
-            if let Some(&'/') = chars.peek() {
-                is_closing_tag = true;
-                chars.next(); // consume '/'
+            // Add any text before the tag
+            if tag_start > 0 {
+                result.push_str(&text[pos..abs_tag_start]);
             }
 
-            // Read tag name
-            while let Some(&next_ch) = chars.peek() {
-                if next_ch == '>' || next_ch == ' ' {
-                    break;
-                }
-                current_tag.push(next_ch);
-                chars.next();
-            }
+            // Parse the tag
+            if let Some(tag_end) = text[abs_tag_start..].find('>') {
+                let abs_tag_end = abs_tag_start + tag_end;
+                let tag_content = &text[abs_tag_start + 1..abs_tag_end];
 
-            // Consume until '>'
-            while let Some(&next_ch) = chars.peek() {
-                if next_ch == '>' {
-                    chars.next();
-                    break;
-                }
-                chars.next();
-            }
-
-            // Check if this is a thinking tag
-            if THINKING_TAGS.contains(&current_tag.to_lowercase().as_str()) {
-                if !is_closing_tag {
-                    // Opening tag - add formatted header
-                    result.push_str("\n╭─ 💭 Thinking ");
-                    result.push_str(&"─".repeat(60));
-                    result.push_str("╮\n│ ");
-                    tag_content.clear();
+                // Check if it's a closing tag
+                if tag_content.starts_with('/') {
+                    let tag_name = tag_content[1..].trim().to_lowercase();
+                    if THINKING_TAGS.contains(&tag_name.as_str()) {
+                        // This is a closing thinking tag - skip it
+                        pos = abs_tag_end + 1;
+                        continue;
+                    }
                 } else {
-                    // Closing tag - add formatted footer
-                    if !tag_content.is_empty() {
-                        // Add the content with proper line wrapping
-                        for line in tag_content.lines() {
-                            result.push_str("│ ");
-                            result.push_str(line);
+                    // Check if it's an opening thinking tag
+                    let tag_name = tag_content.split_whitespace().next().unwrap_or("").to_lowercase();
+                    if THINKING_TAGS.contains(&tag_name.as_str()) {
+                        // Found a thinking block!
+                        pos = abs_tag_end + 1;
+
+                        // Find the closing tag
+                        let closing_tag = format!("</{}>", tag_name);
+                        if let Some(closing_pos) = text[pos..].find(&closing_tag) {
+                            let abs_closing_pos = pos + closing_pos;
+                            let block_content = text[pos..abs_closing_pos].trim();
+
+                            // Render the thinking block with proper borders
                             result.push('\n');
+                            result.push_str("╭─ 💭 Thinking ");
+                            result.push_str(&"─".repeat(BOX_WIDTH - 16));
+                            result.push_str("╮\n");
+
+                            // Wrap and render content
+                            if !block_content.is_empty() {
+                                for line in textwrap::wrap(block_content, CONTENT_WIDTH) {
+                                    result.push_str("│ ");
+                                    result.push_str(&line);
+                                    // Pad to content width
+                                    let padding = CONTENT_WIDTH.saturating_sub(UnicodeWidthStr::width(line.as_ref()));
+                                    result.push_str(&" ".repeat(padding));
+                                    result.push_str(" │\n");
+                                }
+                            }
+
+                            result.push('╰');
+                            result.push_str(&"─".repeat(BOX_WIDTH - 2));
+                            result.push_str("╯\n");
+
+                            // Skip past the closing tag
+                            pos = abs_closing_pos + closing_tag.len();
+                            continue;
                         }
                     }
-                    result.push_str("╰");
-                    result.push_str(&"─".repeat(70));
-                    result.push_str("╯\n");
-                    tag_content.clear();
                 }
-                in_tag = false;
-                continue;
-            }
 
-            // Not a thinking tag, keep original
-            result.push('<');
-            if is_closing_tag {
-                result.push('/');
+                // Not a thinking tag, keep the original tag
+                result.push_str(&text[abs_tag_start..=abs_tag_end]);
+                pos = abs_tag_end + 1;
+            } else {
+                // No closing '>', just add the '<' and continue
+                result.push('<');
+                pos = abs_tag_start + 1;
             }
-            result.push_str(&current_tag);
-            result.push('>');
-            in_tag = false;
-        } else if !tag_content.is_empty() || (in_tag && THINKING_TAGS.contains(&current_tag.to_lowercase().as_str())) {
-            // We're inside a thinking block
-            tag_content.push(ch);
         } else {
-            result.push(ch);
-        }
-    }
-
-    // If there's any remaining tag content, flush it
-    if !tag_content.is_empty() {
-        for line in tag_content.lines() {
-            result.push_str("│ ");
-            result.push_str(line);
-            result.push('\n');
+            // No more tags, add the rest
+            result.push_str(&text[pos..]);
+            break;
         }
     }
 

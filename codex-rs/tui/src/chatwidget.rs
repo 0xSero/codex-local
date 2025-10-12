@@ -439,6 +439,14 @@ impl ChatWidget {
             self.bottom_pane.set_context_tokens(used_tokens, max_tokens, total_session_tokens);
 
             self.token_info = Some(info);
+        } else {
+            // Fallback: Show config values even when model doesn't send token info
+            if let Some(context_window) = self.config.model_context_window {
+                // Start with 100% available
+                self.bottom_pane.set_context_window_percent(Some(100));
+                // Show max tokens from config, with 0 used initially
+                self.bottom_pane.set_context_tokens(Some(0), Some(context_window), Some(0));
+            }
         }
     }
 
@@ -921,7 +929,7 @@ impl ChatWidget {
         let placeholder = EXAMPLE_PROMPTS[rng.random_range(0..EXAMPLE_PROMPTS.len())].to_string();
         let codex_op_tx = spawn_agent(config.clone(), app_event_tx.clone(), conversation_manager);
 
-        Self {
+        let mut instance = Self {
             app_event_tx: app_event_tx.clone(),
             frame_requester: frame_requester.clone(),
             codex_op_tx,
@@ -962,7 +970,11 @@ impl ChatWidget {
             ghost_snapshots_disabled: true,
             needs_final_message_separator: false,
             last_rendered_width: std::cell::Cell::new(None),
-        }
+        };
+
+        // Initialize token display with config values
+        instance.set_token_info(None);
+        instance
     }
 
     /// Create a ChatWidget attached to an existing conversation (e.g., a fork).
@@ -1937,6 +1949,8 @@ impl ChatWidget {
     }
 
     fn add_provider_info(&mut self) {
+        use codex_core::WireApi;
+
         let provider_info = format!(
             "**API Provider**\n\n\
             Name: `{}`\n\
@@ -1944,10 +1958,10 @@ impl ChatWidget {
             Wire API: `{}`\n\n\
             Use `codex-local-switch` to change provider settings",
             self.config.model_provider.name,
-            self.config.model_provider.base_url,
+            self.config.model_provider.base_url.as_deref().unwrap_or("not set"),
             match self.config.model_provider.wire_api {
-                codex_core::config::WireApi::Chat => "chat",
-                codex_core::config::WireApi::Responses => "responses",
+                WireApi::Chat => "chat",
+                WireApi::Responses => "responses",
             }
         );
         self.add_info_message(provider_info, None);
@@ -1975,8 +1989,9 @@ impl ChatWidget {
             Compaction triggers at {} of context capacity.\n\
             Use: `codex-local -c model_auto_compact_token_limit=<tokens>` to override",
             limit.map(|n| n.to_string()).unwrap_or("disabled".to_string()),
-            percentage,
-            context
+            percentage.clone(),
+            context,
+            percentage
         );
         self.add_info_message(info, None);
     }

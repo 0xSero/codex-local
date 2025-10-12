@@ -84,6 +84,8 @@ pub async fn run_main(
 
     // Parse CLI overrides once and derive the base Config eagerly so later
     // components do not need to work with raw TOML values.
+    let mut cli_config_overrides = cli_config_overrides;
+    cli_config_overrides.process_mcp_flags();
     let cli_kv_overrides = cli_config_overrides.parse_overrides().map_err(|e| {
         std::io::Error::new(
             ErrorKind::InvalidInput,

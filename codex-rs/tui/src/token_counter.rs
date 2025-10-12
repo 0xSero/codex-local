@@ -16,6 +16,7 @@ pub fn count_tokens(text: &str, _model: &str) -> usize {
 }
 
 /// Estimate tokens for a message with role
+#[allow(dead_code)]
 pub fn estimate_message_tokens(role: &str, content: &str, model: &str) -> usize {
     // Messages have overhead: role name + delimiters
     // Rough estimate: 4 tokens for message formatting

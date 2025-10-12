@@ -151,7 +151,15 @@ pub async fn run_main(
         tools_web_search_request: cli.web_search.then_some(true),
     };
     let raw_overrides = cli.config_overrides.raw_overrides.clone();
-    let overrides_cli = codex_common::CliConfigOverrides { raw_overrides };
+    let enable_mcp = cli.config_overrides.enable_mcp.clone();
+    let disable_mcp = cli.config_overrides.disable_mcp.clone();
+    let mut overrides_cli = codex_common::CliConfigOverrides {
+        raw_overrides,
+        enable_mcp,
+        disable_mcp,
+    };
+    // Process MCP flags before parsing overrides
+    overrides_cli.process_mcp_flags();
     let cli_kv_overrides = match overrides_cli.parse_overrides() {
         Ok(v) => v,
         #[allow(clippy::print_stderr)]

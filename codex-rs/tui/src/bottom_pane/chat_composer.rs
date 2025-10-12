@@ -1486,7 +1486,12 @@ impl ChatComposer {
         }
     }
 
-    pub(crate) fn set_context_tokens(&mut self, used: Option<u64>, max: Option<u64>, total_session: Option<u64>) {
+    pub(crate) fn set_context_tokens(
+        &mut self,
+        used: Option<u64>,
+        max: Option<u64>,
+        total_session: Option<u64>,
+    ) {
         self.context_tokens_used = used;
         self.context_tokens_max = max;
         self.total_tokens_session = total_session;

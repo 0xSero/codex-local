@@ -37,7 +37,11 @@ pub(crate) fn format_xml_thinking_blocks(text: &str) -> String {
                     }
                 } else {
                     // Check if it's an opening thinking tag
-                    let tag_name = tag_content.split_whitespace().next().unwrap_or("").to_lowercase();
+                    let tag_name = tag_content
+                        .split_whitespace()
+                        .next()
+                        .unwrap_or("")
+                        .to_lowercase();
                     if THINKING_TAGS.contains(&tag_name.as_str()) {
                         // Found a thinking block!
                         pos = abs_tag_end + 1;
@@ -61,7 +65,8 @@ pub(crate) fn format_xml_thinking_blocks(text: &str) -> String {
                                     result.push_str("│ ");
                                     result.push_str(&line);
                                     // Pad to content width
-                                    let padding = CONTENT_WIDTH.saturating_sub(UnicodeWidthStr::width(line.as_ref()));
+                                    let padding = CONTENT_WIDTH
+                                        .saturating_sub(UnicodeWidthStr::width(line.as_ref()));
                                     result.push_str(&" ".repeat(padding));
                                     result.push_str(" │\n");
                                 }
@@ -101,8 +106,11 @@ pub(crate) fn format_xml_thinking_blocks(text: &str) -> String {
 pub(crate) fn format_reasoning_content(text: &str) -> String {
     // Check if the text contains XML thinking tags
     let lower = text.to_lowercase();
-    if lower.contains("<think>") || lower.contains("<thinking>") ||
-       lower.contains("<thought>") || lower.contains("<reasoning>") {
+    if lower.contains("<think>")
+        || lower.contains("<thinking>")
+        || lower.contains("<thought>")
+        || lower.contains("<reasoning>")
+    {
         format_xml_thinking_blocks(text)
     } else {
         // No XML tags, return as-is but maybe with a subtle indicator

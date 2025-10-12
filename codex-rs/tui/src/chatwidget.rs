@@ -441,7 +441,8 @@ impl ChatWidget {
             let used_tokens = Some(info.last_token_usage.tokens_in_context_window());
             let max_tokens = context_window;
             let total_session_tokens = Some(info.total_token_usage.total_tokens);
-            self.bottom_pane.set_context_tokens(used_tokens, max_tokens, total_session_tokens);
+            self.bottom_pane
+                .set_context_tokens(used_tokens, max_tokens, total_session_tokens);
 
             self.token_info = Some(info);
         } else {
@@ -464,7 +465,7 @@ impl ChatWidget {
             self.bottom_pane.set_context_tokens(
                 Some(total_tokens),
                 Some(context_window),
-                Some(self.session_input_tokens + self.session_output_tokens)
+                Some(self.session_input_tokens + self.session_output_tokens),
             );
         }
     }
@@ -814,7 +815,10 @@ impl ChatWidget {
         let has_malformed_operators = ev.command.iter().any(|arg| {
             // Detect shell operators that shouldn't be standalone array elements
             // These indicate the API incorrectly parsed tool calls from thinking blocks
-            matches!(arg.as_str(), ">" | ">>" | "<" | "|" | "&&" | "||" | "2>" | "2>&1")
+            matches!(
+                arg.as_str(),
+                ">" | ">>" | "<" | "|" | "&&" | "||" | "2>" | "2>&1"
+            )
         });
 
         if has_malformed_operators {
@@ -825,7 +829,7 @@ impl ChatWidget {
             // Add error message to history instead
             self.flush_answer_stream_with_separator();
             self.add_to_history(history_cell::new_error_event(
-                "Skipped malformed tool call (likely from thinking block)".to_string()
+                "Skipped malformed tool call (likely from thinking block)".to_string(),
             ));
             self.request_redraw();
             return;
@@ -1975,9 +1979,18 @@ impl ChatWidget {
             Config: `~/.codex-local/config.toml`",
             self.config.model,
             self.config.model_provider_id,
-            self.config.model_context_window.map(|n| n.to_string()).unwrap_or("unknown".to_string()),
-            self.config.model_max_output_tokens.map(|n| n.to_string()).unwrap_or("unknown".to_string()),
-            self.config.model_auto_compact_token_limit.map(|n| n.to_string()).unwrap_or("disabled".to_string())
+            self.config
+                .model_context_window
+                .map(|n| n.to_string())
+                .unwrap_or("unknown".to_string()),
+            self.config
+                .model_max_output_tokens
+                .map(|n| n.to_string())
+                .unwrap_or("unknown".to_string()),
+            self.config
+                .model_auto_compact_token_limit
+                .map(|n| n.to_string())
+                .unwrap_or("disabled".to_string())
         );
         self.add_info_message(config_info, None);
     }
@@ -2012,7 +2025,11 @@ impl ChatWidget {
             Wire API: `{}`\n\n\
             Use `codex-local-switch` to change provider settings",
             self.config.model_provider.name,
-            self.config.model_provider.base_url.as_deref().unwrap_or("not set"),
+            self.config
+                .model_provider
+                .base_url
+                .as_deref()
+                .unwrap_or("not set"),
             match self.config.model_provider.wire_api {
                 WireApi::Chat => "chat",
                 WireApi::Responses => "responses",
@@ -2042,7 +2059,9 @@ impl ChatWidget {
             Context Window: `{}` tokens\n\n\
             Compaction triggers at {} of context capacity.\n\
             Use: `codex-local -c model_auto_compact_token_limit=<tokens>` to override",
-            limit.map(|n| n.to_string()).unwrap_or("disabled".to_string()),
+            limit
+                .map(|n| n.to_string())
+                .unwrap_or("disabled".to_string()),
             percentage.clone(),
             context,
             percentage

@@ -228,22 +228,23 @@ fn context_window_line(props: &FooterProps) -> Line<'static> {
     let percent = props.context_window_percent.unwrap_or(100);
 
     // Build detailed context info if token data is available
-    let text = if let (Some(used), Some(max)) = (props.context_tokens_used, props.context_tokens_max) {
-        let remaining = max.saturating_sub(used);
-        let total_session = props.total_tokens_session.unwrap_or(used);
-        format!(
-            "{}% context left · {}/{} tokens ({}K used, {}K remaining, {}K total session)",
-            percent,
-            used / 1000,
-            max / 1000,
-            used / 1000,
-            remaining / 1000,
-            total_session / 1000
-        )
-    } else {
-        // Fallback to simple percentage display
-        format!("{percent}% context left")
-    };
+    let text =
+        if let (Some(used), Some(max)) = (props.context_tokens_used, props.context_tokens_max) {
+            let remaining = max.saturating_sub(used);
+            let total_session = props.total_tokens_session.unwrap_or(used);
+            format!(
+                "{}% context left · {}/{} tokens ({}K used, {}K remaining, {}K total session)",
+                percent,
+                used / 1000,
+                max / 1000,
+                used / 1000,
+                remaining / 1000,
+                total_session / 1000
+            )
+        } else {
+            // Fallback to simple percentage display
+            format!("{percent}% context left")
+        };
 
     Line::from(vec![Span::from(text).dim()])
 }

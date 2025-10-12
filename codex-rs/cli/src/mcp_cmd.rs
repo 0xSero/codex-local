@@ -56,6 +56,12 @@ pub enum McpSubcommand {
     /// [experimental] Remove stored OAuth credentials for a server.
     /// Requires experimental_use_rmcp_client = true in config.toml.
     Logout(LogoutArgs),
+
+    /// [experimental] Enable a configured MCP server.
+    Enable(EnableArgs),
+
+    /// [experimental] Disable a configured MCP server.
+    Disable(DisableArgs),
 }
 
 #[derive(Debug, clap::Parser)]
@@ -155,6 +161,18 @@ pub struct LogoutArgs {
     pub name: String,
 }
 
+#[derive(Debug, clap::Parser)]
+pub struct EnableArgs {
+    /// Name of the MCP server to enable.
+    pub name: String,
+}
+
+#[derive(Debug, clap::Parser)]
+pub struct DisableArgs {
+    /// Name of the MCP server to disable.
+    pub name: String,
+}
+
 impl McpCli {
     pub async fn run(self) -> Result<()> {
         let McpCli {
@@ -181,6 +199,12 @@ impl McpCli {
             McpSubcommand::Logout(args) => {
                 run_logout(&config_overrides, args).await?;
             }
+            McpSubcommand::Enable(args) => {
+                run_enable(&config_overrides, args).await?;
+            }
+            McpSubcommand::Disable(args) => {
+                run_disable(&config_overrides, args).await?;
+            }
         }
 
         Ok(())
@@ -189,6 +213,8 @@ impl McpCli {
 
 async fn run_add(config_overrides: &CliConfigOverrides, add_args: AddArgs) -> Result<()> {
     // Validate any provided overrides even though they are not currently applied.
+    let mut config_overrides = config_overrides.clone();
+    config_overrides.process_mcp_flags();
     config_overrides.parse_overrides().map_err(|e| anyhow!(e))?;
 
     let AddArgs {
@@ -252,6 +278,8 @@ async fn run_add(config_overrides: &CliConfigOverrides, add_args: AddArgs) -> Re
 }
 
 async fn run_remove(config_overrides: &CliConfigOverrides, remove_args: RemoveArgs) -> Result<()> {
+    let mut config_overrides = config_overrides.clone();
+    config_overrides.process_mcp_flags();
     config_overrides.parse_overrides().map_err(|e| anyhow!(e))?;
 
     let RemoveArgs { name } = remove_args;
@@ -280,6 +308,8 @@ async fn run_remove(config_overrides: &CliConfigOverrides, remove_args: RemoveAr
 }
 
 async fn run_login(config_overrides: &CliConfigOverrides, login_args: LoginArgs) -> Result<()> {
+    let mut config_overrides = config_overrides.clone();
+    config_overrides.process_mcp_flags();
     let overrides = config_overrides.parse_overrides().map_err(|e| anyhow!(e))?;
     let config = Config::load_with_cli_overrides(overrides, ConfigOverrides::default())
         .await
@@ -308,6 +338,8 @@ async fn run_login(config_overrides: &CliConfigOverrides, login_args: LoginArgs)
 }
 
 async fn run_logout(config_overrides: &CliConfigOverrides, logout_args: LogoutArgs) -> Result<()> {
+    let mut config_overrides = config_overrides.clone();
+    config_overrides.process_mcp_flags();
     let overrides = config_overrides.parse_overrides().map_err(|e| anyhow!(e))?;
     let config = Config::load_with_cli_overrides(overrides, ConfigOverrides::default())
         .await
@@ -335,6 +367,8 @@ async fn run_logout(config_overrides: &CliConfigOverrides, logout_args: LogoutAr
 }
 
 async fn run_list(config_overrides: &CliConfigOverrides, list_args: ListArgs) -> Result<()> {
+    let mut config_overrides = config_overrides.clone();
+    config_overrides.process_mcp_flags();
     let overrides = config_overrides.parse_overrides().map_err(|e| anyhow!(e))?;
     let config = Config::load_with_cli_overrides(overrides, ConfigOverrides::default())
         .await
@@ -570,6 +604,8 @@ async fn run_list(config_overrides: &CliConfigOverrides, list_args: ListArgs) ->
 }
 
 async fn run_get(config_overrides: &CliConfigOverrides, get_args: GetArgs) -> Result<()> {
+    let mut config_overrides = config_overrides.clone();
+    config_overrides.process_mcp_flags();
     let overrides = config_overrides.parse_overrides().map_err(|e| anyhow!(e))?;
     let config = Config::load_with_cli_overrides(overrides, ConfigOverrides::default())
         .await
@@ -685,4 +721,67 @@ fn validate_server_name(name: &str) -> Result<()> {
     } else {
         bail!("invalid server name '{name}' (use letters, numbers, '-', '_')");
     }
+}
+
+async fn run_enable(config_overrides: &CliConfigOverrides, enable_args: EnableArgs) -> Result<()> {
+    let mut config_overrides = config_overrides.clone();
+    config_overrides.process_mcp_flags();
+    config_overrides.parse_overrides().map_err(|e| anyhow!(e))?;
+
+    let EnableArgs { name } = enable_args;
+
+    validate_server_name(&name)?;
+
+    let codex_home = find_codex_home().context("failed to resolve CODEX_HOME")?;
+    let mut servers = load_global_mcp_servers(&codex_home)
+        .await
+        .with_context(|| format!("failed to load MCP servers from {}", codex_home.display()))?;
+
+    let server = servers
+        .get_mut(&name)
+        .ok_or_else(|| anyhow!("No MCP server named '{name}' found."))?;
+
+    if server.enabled {
+        println!("MCP server '{name}' is already enabled.");
+    } else {
+        server.enabled = true;
+        write_global_mcp_servers(&codex_home, &servers)
+            .with_context(|| format!("failed to write MCP servers to {}", codex_home.display()))?;
+        println!("Enabled MCP server '{name}'.");
+    }
+
+    Ok(())
+}
+
+async fn run_disable(
+    config_overrides: &CliConfigOverrides,
+    disable_args: DisableArgs,
+) -> Result<()> {
+    let mut config_overrides = config_overrides.clone();
+    config_overrides.process_mcp_flags();
+    config_overrides.parse_overrides().map_err(|e| anyhow!(e))?;
+
+    let DisableArgs { name } = disable_args;
+
+    validate_server_name(&name)?;
+
+    let codex_home = find_codex_home().context("failed to resolve CODEX_HOME")?;
+    let mut servers = load_global_mcp_servers(&codex_home)
+        .await
+        .with_context(|| format!("failed to load MCP servers from {}", codex_home.display()))?;
+
+    let server = servers
+        .get_mut(&name)
+        .ok_or_else(|| anyhow!("No MCP server named '{name}' found."))?;
+
+    if !server.enabled {
+        println!("MCP server '{name}' is already disabled.");
+    } else {
+        server.enabled = false;
+        write_global_mcp_servers(&codex_home, &servers)
+            .with_context(|| format!("failed to write MCP servers to {}", codex_home.display()))?;
+        println!("Disabled MCP server '{name}'.");
+    }
+
+    Ok(())
 }

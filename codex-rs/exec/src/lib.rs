@@ -183,6 +183,8 @@ pub async fn run_main(cli: Cli, codex_linux_sandbox_exe: Option<PathBuf>) -> any
         tools_web_search_request: None,
     };
     // Parse `-c` overrides.
+    let mut config_overrides = config_overrides;
+    config_overrides.process_mcp_flags();
     let cli_kv_overrides = match config_overrides.parse_overrides() {
         Ok(v) => v,
         Err(e) => {

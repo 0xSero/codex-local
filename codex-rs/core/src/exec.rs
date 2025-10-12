@@ -308,9 +308,15 @@ async fn exec(
     // Check if command contains shell operators (redirects, pipes, etc)
     // If so, execute through shell to properly handle them
     let has_shell_operators = command.iter().any(|arg| {
-        arg == ">" || arg == ">>" || arg == "<" ||
-        arg == "|" || arg == "&&" || arg == "||" ||
-        arg == "2>" || arg == "2>&1" || arg == "&"
+        arg == ">"
+            || arg == ">>"
+            || arg == "<"
+            || arg == "|"
+            || arg == "&&"
+            || arg == "||"
+            || arg == "2>"
+            || arg == "2>&1"
+            || arg == "&"
     });
 
     let (program, args) = if has_shell_operators {

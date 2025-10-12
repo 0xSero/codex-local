@@ -34,9 +34,44 @@ pub struct CliConfigOverrides {
         global = true,
     )]
     pub raw_overrides: Vec<String>,
+
+    /// Enable one or more MCP servers by name (e.g., --enable-mcp brave-search)
+    #[arg(
+        long = "enable-mcp",
+        value_name = "SERVER_NAME",
+        action = ArgAction::Append,
+        global = true,
+    )]
+    pub enable_mcp: Vec<String>,
+
+    /// Disable one or more MCP servers by name (e.g., --disable-mcp brave-search)
+    #[arg(
+        long = "disable-mcp",
+        value_name = "SERVER_NAME",
+        action = ArgAction::Append,
+        global = true,
+    )]
+    pub disable_mcp: Vec<String>,
 }
 
 impl CliConfigOverrides {
+    /// Process MCP enable/disable flags and convert them to raw overrides.
+    /// This should be called before parse_overrides to ensure MCP flags are
+    /// applied correctly.
+    pub fn process_mcp_flags(&mut self) {
+        // Add enable-mcp overrides
+        for server_name in &self.enable_mcp {
+            let override_str = format!("mcp_servers.{}.enabled=true", { server_name });
+            self.raw_overrides.push(override_str);
+        }
+
+        // Add disable-mcp overrides
+        for server_name in &self.disable_mcp {
+            let override_str = format!("mcp_servers.{}.enabled=false", { server_name });
+            self.raw_overrides.push(override_str);
+        }
+    }
+
     /// Parse the raw strings captured from the CLI into a list of `(path,
     /// value)` tuples where `value` is a `serde_json::Value`.
     pub fn parse_overrides(&self) -> Result<Vec<(String, Value)>, String> {
@@ -122,10 +157,11 @@ fn apply_single_override(root: &mut Value, path: &str, value: Value) {
             }
             _ => {
                 *current = Value::Table(Table::new());
+                // We need to handle the case where we just created a table
+                // and now need to insert into it. Since we can't use into_mut()
+                // on the Value, we'll handle this differently.
                 if let Value::Table(tbl) = current {
-                    current = tbl
-                        .entry((*part).to_string())
-                        .or_insert_with(|| Value::Table(Table::new()));
+                    let _ = tbl.insert((*part).to_string(), Value::Table(Table::new()));
                 }
             }
         }

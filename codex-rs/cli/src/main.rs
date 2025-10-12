@@ -395,6 +395,14 @@ fn prepend_config_flags(
     subcommand_config_overrides
         .raw_overrides
         .splice(0..0, cli_config_overrides.raw_overrides);
+
+    // Prepend MCP enable/disable flags
+    subcommand_config_overrides
+        .enable_mcp
+        .splice(0..0, cli_config_overrides.enable_mcp);
+    subcommand_config_overrides
+        .disable_mcp
+        .splice(0..0, cli_config_overrides.disable_mcp);
 }
 
 /// Build the final `TuiCli` for a `codex resume` invocation.

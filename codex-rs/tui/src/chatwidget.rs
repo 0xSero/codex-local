@@ -726,6 +726,13 @@ impl ChatWidget {
         // Before streaming agent content, flush any active exec cell group.
         self.flush_active_cell();
 
+        // Track output tokens from streaming response
+        let output_tokens = crate::token_counter::count_tokens(&delta, &self.config.model) as u64;
+        self.session_output_tokens += output_tokens;
+
+        // Update token display with new output tokens
+        self.update_token_display();
+
         if self.stream_controller.is_none() {
             if self.needs_final_message_separator {
                 let elapsed_seconds = self

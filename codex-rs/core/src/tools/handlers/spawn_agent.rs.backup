@@ -1,0 +1,81 @@
+use crate::function_tool::FunctionCallError;
+use crate::tools::context::ToolInvocation;
+use crate::tools::context::ToolOutput;
+use crate::tools::context::ToolPayload;
+use crate::tools::registry::ToolHandler;
+use crate::tools::registry::ToolKind;
+use async_trait::async_trait;
+use serde::Deserialize;
+
+pub struct SpawnAgentHandler;
+
+#[derive(Debug, Deserialize)]
+struct SpawnAgentArgs {
+    task_id: String,
+    purpose: String,
+    prompt: String,
+    #[serde(default)]
+    checklist: Vec<String>,
+    #[serde(default)]
+    profile: Option<String>,
+}
+
+#[async_trait]
+impl ToolHandler for SpawnAgentHandler {
+    fn kind(&self) -> ToolKind {
+        ToolKind::Function
+    }
+
+    async fn handle(&self, invocation: ToolInvocation) -> Result<ToolOutput, FunctionCallError> {
+        let ToolInvocation {
+            call_id, payload, ..
+        } = invocation;
+
+        let arguments = match payload {
+            ToolPayload::Function { arguments } => arguments,
+            _ => {
+                return Err(FunctionCallError::RespondToModel(
+                    "spawn_agent requires function arguments".to_string(),
+                ));
+            }
+        };
+
+        let args: SpawnAgentArgs = serde_json::from_str(&arguments).map_err(|e| {
+            FunctionCallError::RespondToModel(format!(
+                "Failed to parse spawn_agent arguments: {}",
+                e
+            ))
+        })?;
+
+        // For now, we'll return a message that the orchestrator will intercept
+        // In the future, this will actually spawn the agent
+        let checklist_str = if args.checklist.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "\nChecklist:\n{}",
+                args.checklist
+                    .iter()
+                    .map(|item| format!("- {}", item))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            )
+        };
+
+        let profile_str = args
+            .profile
+            .as_ref()
+            .map(|p| format!(" (profile: {})", p))
+            .unwrap_or_default();
+
+        let response = format!(
+            "Agent spawned: {}\nTask ID: {}\nPurpose: {}{}{}",
+            args.task_id, args.task_id, args.purpose, profile_str, checklist_str
+        );
+
+        Ok(ToolOutput::Function {
+            content: response,
+            success: Some(true),
+        })
+    }
+}

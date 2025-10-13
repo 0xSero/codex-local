@@ -37,6 +37,7 @@ pub struct ConversationManager {
     conversations: Arc<RwLock<HashMap<ConversationId, Arc<CodexConversation>>>>,
     auth_manager: Arc<AuthManager>,
     session_source: SessionSource,
+    self_arc: tokio::sync::OnceCell<Arc<Self>>,
 }
 
 impl ConversationManager {
@@ -45,7 +46,20 @@ impl ConversationManager {
             conversations: Arc::new(RwLock::new(HashMap::new())),
             auth_manager,
             session_source,
+            self_arc: tokio::sync::OnceCell::new(),
         }
+    }
+
+    /// Initialize the self-reference. Must be called exactly once after wrapping in Arc.
+    pub fn init_self_ref(self: &Arc<Self>) {
+        let _ = self.self_arc.set(Arc::clone(self));
+    }
+
+    fn get_self_arc(&self) -> Arc<Self> {
+        self.self_arc
+            .get()
+            .expect("ConversationManager::init_self_ref must be called after creation")
+            .clone()
     }
 
     /// Construct with a dummy AuthManager containing the provided CodexAuth.
@@ -67,6 +81,7 @@ impl ConversationManager {
         config: Config,
         auth_manager: Arc<AuthManager>,
     ) -> CodexResult<NewConversation> {
+        let self_arc = self.get_self_arc();
         let CodexSpawnOk {
             codex,
             conversation_id,
@@ -75,6 +90,7 @@ impl ConversationManager {
             auth_manager,
             InitialHistory::New,
             self.session_source,
+            self_arc,
         )
         .await?;
         self.finalize_spawn(codex, conversation_id).await
@@ -129,11 +145,19 @@ impl ConversationManager {
         rollout_path: PathBuf,
         auth_manager: Arc<AuthManager>,
     ) -> CodexResult<NewConversation> {
+        let self_arc = self.get_self_arc();
         let initial_history = RolloutRecorder::get_rollout_history(&rollout_path).await?;
         let CodexSpawnOk {
             codex,
             conversation_id,
-        } = Codex::spawn(config, auth_manager, initial_history, self.session_source).await?;
+        } = Codex::spawn(
+            config,
+            auth_manager,
+            initial_history,
+            self.session_source,
+            self_arc,
+        )
+        .await?;
         self.finalize_spawn(codex, conversation_id).await
     }
 
@@ -164,10 +188,11 @@ impl ConversationManager {
 
         // Spawn a new conversation with the computed initial history.
         let auth_manager = self.auth_manager.clone();
+        let self_arc = self.get_self_arc();
         let CodexSpawnOk {
             codex,
             conversation_id,
-        } = Codex::spawn(config, auth_manager, history, self.session_source).await?;
+        } = Codex::spawn(config, auth_manager, history, self.session_source, self_arc).await?;
 
         self.finalize_spawn(codex, conversation_id).await
     }

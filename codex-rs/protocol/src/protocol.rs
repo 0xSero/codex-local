@@ -510,6 +510,18 @@ pub enum EventMsg {
 
     PlanUpdate(UpdatePlanArgs),
 
+    /// Notification that a child agent has been spawned.
+    AgentSpawned(AgentSpawnedEvent),
+
+    /// Progress update from a specific agent.
+    AgentProgress(AgentProgressEvent),
+
+    /// Notification that an agent has completed its task.
+    AgentCompleted(AgentCompletedEvent),
+
+    /// UI hint that focus has switched to a different agent.
+    AgentSwitched(AgentSwitchedEvent),
+
     TurnAborted(TurnAbortedEvent),
 
     /// Notification that the agent is shutting down.
@@ -1349,6 +1361,48 @@ pub struct Chunk {
     pub orig_index: u32,
     pub deleted_lines: Vec<String>,
     pub inserted_lines: Vec<String>,
+}
+
+/// Notification that a child agent has been spawned by the orchestrator.
+#[derive(Debug, Clone, Deserialize, Serialize, TS)]
+pub struct AgentSpawnedEvent {
+    /// Unique identifier for this agent.
+    pub agent_id: String,
+    /// Optional parent agent ID (None for the main orchestrator thread).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_id: Option<String>,
+    /// Profile name used for this agent, if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub profile: Option<String>,
+    /// Human-readable purpose/description of this agent's task.
+    pub purpose: String,
+}
+
+/// Progress update from a specific agent.
+#[derive(Debug, Clone, Deserialize, Serialize, TS)]
+pub struct AgentProgressEvent {
+    /// Identifier for the agent reporting progress.
+    pub agent_id: String,
+    /// Progress message.
+    pub message: String,
+}
+
+/// Notification that an agent has completed its task.
+#[derive(Debug, Clone, Deserialize, Serialize, TS)]
+pub struct AgentCompletedEvent {
+    /// Identifier for the agent that completed.
+    pub agent_id: String,
+    /// Whether the task completed successfully.
+    pub success: bool,
+    /// Summary of the agent's work.
+    pub summary: String,
+}
+
+/// UI hint that focus has switched to a different agent.
+#[derive(Debug, Clone, Deserialize, Serialize, TS)]
+pub struct AgentSwitchedEvent {
+    /// Identifier for the agent now in focus.
+    pub agent_id: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, TS)]

@@ -33,6 +33,8 @@ pub enum SlashCommand {
     Models,
     CompactSettings,
     Think,
+    Orchestrator,
+    Profiles,
     #[cfg(debug_assertions)]
     TestApproval,
 }
@@ -62,6 +64,8 @@ impl SlashCommand {
             SlashCommand::Models => "list available models from /v1/models endpoint",
             SlashCommand::CompactSettings => "configure auto-compaction settings",
             SlashCommand::Think => "toggle XML thinking block rendering",
+            SlashCommand::Orchestrator => "toggle multi-agent orchestrator mode",
+            SlashCommand::Profiles => "list and manage configuration profiles",
             #[cfg(debug_assertions)]
             SlashCommand::TestApproval => "test approval request",
         }
@@ -96,7 +100,9 @@ impl SlashCommand {
             | SlashCommand::Provider
             | SlashCommand::Models
             | SlashCommand::CompactSettings
-            | SlashCommand::Think => true,
+            | SlashCommand::Think
+            | SlashCommand::Orchestrator
+            | SlashCommand::Profiles => true,
 
             #[cfg(debug_assertions)]
             SlashCommand::TestApproval => true,

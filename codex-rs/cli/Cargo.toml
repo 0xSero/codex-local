@@ -4,7 +4,7 @@ name = "codex-cli"
 version = { workspace = true }
 
 [[bin]]
-name = "codex"
+name = "codex-local"
 path = "src/main.rs"
 
 [lib]

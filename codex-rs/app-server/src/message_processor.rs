@@ -40,6 +40,7 @@ impl MessageProcessor {
             auth_manager.clone(),
             SessionSource::VSCode,
         ));
+        conversation_manager.init_self_ref();
         let codex_message_processor = CodexMessageProcessor::new(
             auth_manager,
             conversation_manager,

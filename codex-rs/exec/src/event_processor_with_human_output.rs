@@ -449,10 +449,19 @@ impl EventProcessor for EventProcessorWithHumanOutput {
                 eprintln!();
             }
             EventMsg::PlanUpdate(plan_update_event) => {
-                let UpdatePlanArgs { explanation, plan } = plan_update_event;
+                let UpdatePlanArgs {
+                    explanation,
+                    plan,
+                    agent_id,
+                } = plan_update_event;
 
                 // Header
-                ts_msg!(self, "{}", "Plan update".style(self.magenta));
+                let header = if let Some(ref aid) = agent_id {
+                    format!("Plan update [{aid}]")
+                } else {
+                    "Plan update".to_string()
+                };
+                ts_msg!(self, "{}", header.style(self.magenta));
 
                 // Optional explanation
                 if let Some(explanation) = explanation
@@ -480,6 +489,53 @@ impl EventProcessor for EventProcessorWithHumanOutput {
                         }
                     }
                 }
+            }
+            EventMsg::AgentSpawned(event) => {
+                let profile_str = event
+                    .profile
+                    .as_ref()
+                    .map(|p| format!(" [{p}]"))
+                    .unwrap_or_default();
+                ts_msg!(
+                    self,
+                    "{} {}{}: {}",
+                    "agent spawned".style(self.magenta).style(self.italic),
+                    event.agent_id.style(self.bold),
+                    profile_str,
+                    event.purpose
+                );
+            }
+            EventMsg::AgentProgress(event) => {
+                ts_msg!(
+                    self,
+                    "{} {}: {}",
+                    "agent progress".style(self.cyan),
+                    event.agent_id.style(self.bold),
+                    event.message
+                );
+            }
+            EventMsg::AgentCompleted(event) => {
+                let status_marker = if event.success {
+                    "✓".style(self.green)
+                } else {
+                    "✗".style(self.red)
+                };
+                ts_msg!(
+                    self,
+                    "{} {} {}: {}",
+                    "agent completed".style(self.magenta).style(self.italic),
+                    status_marker,
+                    event.agent_id.style(self.bold),
+                    event.summary
+                );
+            }
+            EventMsg::AgentSwitched(event) => {
+                ts_msg!(
+                    self,
+                    "{} {}",
+                    "switched to agent".style(self.cyan),
+                    event.agent_id.style(self.bold)
+                );
             }
             EventMsg::GetHistoryEntryResponse(_) => {
                 // Currently ignored in exec output.

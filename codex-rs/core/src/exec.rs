@@ -343,7 +343,7 @@ async fn exec(
     let arg0 = None;
     let child = spawn_child_async(
         PathBuf::from(program),
-        args.into(),
+        args,
         arg0,
         cwd,
         sandbox_policy,

@@ -282,7 +282,11 @@ async fn run_codex_tool_session_inner(
                     | EventMsg::ShutdownComplete
                     | EventMsg::ViewImageToolCall(_)
                     | EventMsg::EnteredReviewMode(_)
-                    | EventMsg::ExitedReviewMode(_) => {
+                    | EventMsg::ExitedReviewMode(_)
+                    | EventMsg::AgentSpawned(_)
+                    | EventMsg::AgentProgress(_)
+                    | EventMsg::AgentCompleted(_)
+                    | EventMsg::AgentSwitched(_) => {
                         // For now, we do not do anything extra for these
                         // events. Note that
                         // send(codex_event_to_notification(&event)) above has

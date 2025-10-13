@@ -1280,6 +1280,12 @@ impl ChatWidget {
             SlashCommand::Think => {
                 self.add_think_toggle_info();
             }
+            SlashCommand::Orchestrator => {
+                self.add_orchestrator_toggle_info();
+            }
+            SlashCommand::Profiles => {
+                self.add_profiles_info();
+            }
             #[cfg(debug_assertions)]
             SlashCommand::TestApproval => {
                 use codex_core::protocol::EventMsg;
@@ -1565,6 +1571,19 @@ impl ChatWidget {
                 self.on_entered_review_mode(review_request)
             }
             EventMsg::ExitedReviewMode(review) => self.on_exited_review_mode(review),
+            // Orchestrator events - TODO: implement full multi-agent UI
+            EventMsg::AgentSpawned(_) => {
+                // Placeholder: will be handled when multi-agent UI is implemented
+            }
+            EventMsg::AgentProgress(_) => {
+                // Placeholder: will be handled when multi-agent UI is implemented
+            }
+            EventMsg::AgentCompleted(_) => {
+                // Placeholder: will be handled when multi-agent UI is implemented
+            }
+            EventMsg::AgentSwitched(_) => {
+                // Placeholder: will be handled when multi-agent UI is implemented
+            }
         }
     }
 
@@ -2076,6 +2095,107 @@ impl ChatWidget {
                     are rendered as beautiful bordered boxes.\n\n\
                     This feature is always enabled in codex-local.";
         self.add_info_message(info.to_string(), None);
+    }
+
+    fn add_orchestrator_toggle_info(&mut self) {
+        let has_orchestrator_config = self.config.active_orchestrator_profile.is_some()
+            && !self.config.active_agent_profiles.is_empty();
+
+        let status = if has_orchestrator_config {
+            let orch_profile = self
+                .config
+                .active_orchestrator_profile
+                .as_deref()
+                .unwrap_or("unknown");
+            let agent_profiles = self.config.active_agent_profiles.join("`, `");
+            format!(
+                "**Status:** ✓ Configured\n\
+                    - Orchestrator profile: `{orch_profile}`\n\
+                    - Agent profiles: `{agent_profiles}`\n\n\
+                    The orchestrator infrastructure is ready. When you ask the agent to break down\n\
+                    complex tasks, it can coordinate multiple child agents automatically."
+            )
+        } else {
+            "**Status:** ⚠ Not Configured\n\n\
+            To enable orchestrator mode, add to `~/.codex-local/config.toml`:\n\n\
+            ```toml\n\
+            [profiles.orchestrator]\n\
+            model = \"claude-sonnet-4\"\n\n\
+            [profiles.worker]\n\
+            model = \"claude-haiku-3-5\"\n\n\
+            orchestrator_profile = \"orchestrator\"\n\
+            agent_profiles = [\"worker\"]\n\
+            ```"
+            .to_string()
+        };
+
+        let info = format!(
+            "**Multi-Agent Orchestrator Mode**\n\n\
+                    This feature allows the main agent to coordinate multiple child agents, \
+                    each working on separate subtasks in parallel.\n\n\
+                    {status}\n\n\
+                    **How it works:**\n\
+                    - Main agent identifies subtasks that can be parallelized\n\
+                    - Spawns child agents with isolated contexts\n\
+                    - Each child works independently on its assigned task\n\
+                    - Results are aggregated and validated via checklists\n\
+                    - Protocol events show progress of all agents"
+        );
+
+        self.add_info_message(info, None);
+    }
+
+    fn add_profiles_info(&mut self) {
+        let config_path = self.config.codex_home.join("config.toml");
+        let config_path_str = config_path.to_string_lossy();
+
+        let current_profile = self.config.active_profile.as_deref().unwrap_or("(default)");
+        let orch_profile = self
+            .config
+            .active_orchestrator_profile
+            .as_deref()
+            .unwrap_or("(none)");
+        let agent_profiles = if self.config.active_agent_profiles.is_empty() {
+            "(none)".to_string()
+        } else {
+            self.config.active_agent_profiles.join(", ")
+        };
+
+        let current_model = &self.config.model;
+        let current_provider = &self.config.model_provider_id;
+
+        let info = format!(
+            "**Configuration Profiles**\n\n\
+                    **Current Active Settings:**\n\
+                    - Main profile: `{current_profile}`\n\
+                    - Model: `{current_model}`\n\
+                    - Provider: `{current_provider}`\n\
+                    - Orchestrator profile: `{orch_profile}`\n\
+                    - Agent profiles: `{agent_profiles}`\n\n\
+                    **To edit profiles:** Run `codex-local profiles edit`\n\
+                    This will open `{config_path_str}` in your editor.\n\n\
+                    **Example profile configuration:**\n\
+                    ```toml\n\
+                    # Main profile for general work\n\
+                    [profiles.default]\n\
+                    model = \"claude-sonnet-4\"\n\n\
+                    # Fast profile for quick tasks\n\
+                    [profiles.fast]\n\
+                    model = \"claude-haiku-3-5\"\n\n\
+                    # Orchestrator configuration\n\
+                    [profiles.orchestrator]\n\
+                    model = \"claude-sonnet-4\"\n\n\
+                    [profiles.worker]\n\
+                    model = \"claude-haiku-3-5\"\n\n\
+                    # Activate profiles\n\
+                    profile = \"default\"\n\
+                    orchestrator_profile = \"orchestrator\"\n\
+                    agent_profiles = [\"worker\"]\n\
+                    ```\n\n\
+                    **Note:** After editing config.toml, restart codex-local to apply changes."
+        );
+
+        self.add_info_message(info, None);
     }
 
     /// Forward file-search results to the bottom pane.

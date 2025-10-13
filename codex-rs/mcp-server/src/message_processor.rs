@@ -56,6 +56,7 @@ impl MessageProcessor {
         let auth_manager = AuthManager::shared(config.codex_home.clone(), false);
         let conversation_manager =
             Arc::new(ConversationManager::new(auth_manager, SessionSource::Mcp));
+        conversation_manager.init_self_ref();
         Self {
             outgoing,
             initialized: false,

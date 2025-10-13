@@ -38,8 +38,9 @@ use crate::mcp_cmd::McpCli;
     subcommand_negates_reqs = true,
     // The executable is sometimes invoked via a platform‑specific name like
     // `codex-x86_64-unknown-linux-musl`, but the help output should always use
-    // the generic `codex` command name that users run.
-    bin_name = "codex"
+    // the generic command name that users run. For codex-local builds, use
+    // the `codex-local` binary name for help output.
+    bin_name = "codex-local"
 )]
 struct MultitoolCli {
     #[clap(flatten)]
@@ -57,6 +58,9 @@ enum Subcommand {
     /// Run Codex non-interactively.
     #[clap(visible_alias = "e")]
     Exec(ExecCli),
+
+    /// Manage configuration profiles.
+    Profiles(ProfilesCommand),
 
     /// Manage login.
     Login(LoginCommand),
@@ -139,6 +143,18 @@ enum SandboxCommand {
 }
 
 #[derive(Debug, Parser)]
+struct ProfilesCommand {
+    #[command(subcommand)]
+    action: ProfilesSubcommand,
+}
+
+#[derive(Debug, clap::Subcommand)]
+enum ProfilesSubcommand {
+    /// Edit the configuration file in your default editor.
+    Edit,
+}
+
+#[derive(Debug, Parser)]
 struct LoginCommand {
     #[clap(skip)]
     config_overrides: CliConfigOverrides,
@@ -212,7 +228,7 @@ fn format_exit_messages(exit_info: AppExitInfo, color_enabled: bool) -> Vec<Stri
     )];
 
     if let Some(session_id) = conversation_id {
-        let resume_cmd = format!("codex resume {session_id}");
+        let resume_cmd = format!("codex-local resume {session_id}");
         let command = if color_enabled {
             resume_cmd.cyan().to_string()
         } else {
@@ -262,6 +278,11 @@ async fn cli_main(codex_linux_sandbox_exe: Option<PathBuf>) -> anyhow::Result<()
             let exit_info = codex_tui::run_main(interactive, codex_linux_sandbox_exe).await?;
             print_exit_messages(exit_info);
         }
+        Some(Subcommand::Profiles(profiles_cmd)) => match profiles_cmd.action {
+            ProfilesSubcommand::Edit => {
+                handle_profiles_edit()?;
+            }
+        },
         Some(Subcommand::Exec(mut exec_cli)) => {
             prepend_config_flags(
                 &mut exec_cli.config_overrides,
@@ -479,6 +500,58 @@ fn print_completion(cmd: CompletionCommand) {
     generate(cmd.shell, &mut app, name, &mut std::io::stdout());
 }
 
+/// Handle the `codex-local profiles edit` command by opening the config file in an editor.
+fn handle_profiles_edit() -> anyhow::Result<()> {
+    use std::process::Command;
+
+    let config_path = codex_core::config::find_codex_home()?.join("config.toml");
+
+    // Ensure the config file exists
+    if !config_path.exists() {
+        if let Some(parent) = config_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&config_path, b"# Codex configuration file\n\n")?;
+    }
+
+    // Determine which editor to use
+    let editor = std::env::var("EDITOR")
+        .or_else(|_| std::env::var("VISUAL"))
+        .unwrap_or_else(|_| {
+            // Default editor preference order: nano, vim, vi
+            if which_exists("nano") {
+                "nano".to_string()
+            } else if which_exists("vim") {
+                "vim".to_string()
+            } else if which_exists("vi") {
+                "vi".to_string()
+            } else {
+                eprintln!("Error: No editor found. Set EDITOR environment variable or install nano/vim/vi.");
+                std::process::exit(1);
+            }
+        });
+
+    println!("Opening {} in {}...", config_path.display(), editor);
+
+    // Launch the editor
+    let status = Command::new(&editor).arg(&config_path).status()?;
+
+    if !status.success() {
+        anyhow::bail!("Editor exited with status: {}", status);
+    }
+
+    Ok(())
+}
+
+/// Check if a command exists in PATH
+fn which_exists(cmd: &str) -> bool {
+    std::process::Command::new("which")
+        .arg(cmd)
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -538,7 +611,7 @@ mod tests {
             lines,
             vec![
                 "Token usage: total=2 input=0 output=2".to_string(),
-                "To continue this session, run codex resume 123e4567-e89b-12d3-a456-426614174000"
+                "To continue this session, run codex-local resume 123e4567-e89b-12d3-a456-426614174000"
                     .to_string(),
             ]
         );

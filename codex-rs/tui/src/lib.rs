@@ -29,6 +29,7 @@ use tracing_appender::non_blocking;
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::prelude::*;
 
+mod agent_view;
 mod app;
 mod app_backtrack;
 mod app_event;

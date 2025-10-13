@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 
 use crate::AuthManager;
+use crate::ConversationManager;
 use crate::client_common::REVIEW_PROMPT;
 use crate::event_mapping::map_response_item_to_event_messages;
 use crate::function_tool::FunctionCallError;
@@ -151,6 +152,7 @@ impl Codex {
         auth_manager: Arc<AuthManager>,
         conversation_history: InitialHistory,
         session_source: SessionSource,
+        conversation_manager: Arc<ConversationManager>,
     ) -> CodexResult<CodexSpawnOk> {
         let (tx_sub, rx_sub) = async_channel::bounded(SUBMISSION_CHANNEL_CAPACITY);
         let (tx_event, rx_event) = async_channel::unbounded();
@@ -180,6 +182,7 @@ impl Codex {
             tx_event.clone(),
             conversation_history,
             session_source,
+            conversation_manager,
         )
         .await
         .map_err(|e| {
@@ -315,6 +318,7 @@ impl Session {
         tx_event: Sender<Event>,
         initial_history: InitialHistory,
         session_source: SessionSource,
+        conversation_manager: Arc<ConversationManager>,
     ) -> anyhow::Result<(Arc<Self>, TurnContext)> {
         let ConfigureSession {
             provider,
@@ -452,6 +456,8 @@ impl Session {
                 use_streamable_shell_tool: config.use_experimental_streamable_shell_tool,
                 include_view_image_tool: config.include_view_image_tool,
                 experimental_unified_exec_tool: config.use_experimental_unified_exec_tool,
+                include_spawn_agent_tool: config.active_orchestrator_profile.is_some()
+                    && !config.active_agent_profiles.is_empty(),
             }),
             user_instructions,
             base_instructions,
@@ -475,6 +481,8 @@ impl Session {
                 turn_context.cwd.clone(),
                 config.codex_linux_sandbox_exe.clone(),
             )),
+            conversation_manager,
+            config: config.clone(),
         };
 
         let sess = Arc::new(Session {
@@ -1201,6 +1209,8 @@ async fn submission_loop(
                     use_streamable_shell_tool: config.use_experimental_streamable_shell_tool,
                     include_view_image_tool: config.include_view_image_tool,
                     experimental_unified_exec_tool: config.use_experimental_unified_exec_tool,
+                    include_spawn_agent_tool: config.active_orchestrator_profile.is_some()
+                        && !config.active_agent_profiles.is_empty(),
                 });
 
                 let new_turn_context = TurnContext {
@@ -1305,6 +1315,8 @@ async fn submission_loop(
                             include_view_image_tool: config.include_view_image_tool,
                             experimental_unified_exec_tool: config
                                 .use_experimental_unified_exec_tool,
+                            include_spawn_agent_tool: config.active_orchestrator_profile.is_some()
+                                && !config.active_agent_profiles.is_empty(),
                         }),
                         user_instructions: turn_context.user_instructions.clone(),
                         base_instructions: turn_context.base_instructions.clone(),
@@ -1544,6 +1556,7 @@ async fn spawn_review_thread(
         use_streamable_shell_tool: false,
         include_view_image_tool: false,
         experimental_unified_exec_tool: config.use_experimental_unified_exec_tool,
+        include_spawn_agent_tool: false, // Review threads don't need orchestrator
     });
 
     let base_instructions = REVIEW_PROMPT.to_string();

@@ -231,6 +231,14 @@ pub struct Config {
 
     /// OTEL configuration (exporter type, endpoint, headers, etc.).
     pub otel: crate::config_types::OtelConfig,
+
+    /// Profile to use for the orchestrator agent (parent thread) in multi-agent mode.
+    /// When set, the orchestrator will use this profile's model and configuration.
+    pub active_orchestrator_profile: Option<String>,
+
+    /// Profiles available for child agents spawned by the orchestrator.
+    /// The orchestrator can select from these profiles when spawning task-specific agents.
+    pub active_agent_profiles: Vec<String>,
 }
 
 impl Config {
@@ -817,6 +825,15 @@ pub struct ConfigToml {
 
     /// Tracks whether the Windows onboarding screen has been acknowledged.
     pub windows_wsl_setup_acknowledged: Option<bool>,
+
+    /// Profile to use for the orchestrator agent (parent thread) in multi-agent mode.
+    /// When set, the orchestrator will use this profile's model and configuration.
+    pub orchestrator_profile: Option<String>,
+
+    /// Profiles available for child agents spawned by the orchestrator.
+    /// The orchestrator can select from these profiles when spawning task-specific agents.
+    #[serde(default)]
+    pub agent_profiles: Option<Vec<String>>,
 }
 
 impl From<ConfigToml> for UserSavedConfig {
@@ -1198,6 +1215,8 @@ impl Config {
                     exporter,
                 }
             },
+            active_orchestrator_profile: cfg.orchestrator_profile,
+            active_agent_profiles: cfg.agent_profiles.unwrap_or_default(),
         };
         Ok(config)
     }

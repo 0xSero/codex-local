@@ -21,6 +21,7 @@ use codex_core::model_family::find_family_for_model;
 use codex_core::protocol::SessionSource;
 use codex_core::protocol::TokenUsage;
 use codex_core::protocol_config_types::ReasoningEffort as ReasoningEffortConfig;
+use codex_orchestrator::Orchestrator;
 use codex_protocol::ConversationId;
 use color_eyre::eyre::Result;
 use color_eyre::eyre::WrapErr;
@@ -71,6 +72,9 @@ pub(crate) struct App {
 
     // Esc-backtracking state grouped
     pub(crate) backtrack: crate::app_backtrack::BacktrackState,
+
+    // Orchestrator mode (optional - enabled when orchestrator_profile is configured)
+    pub(crate) orchestrator: Option<Orchestrator>,
 }
 
 impl App {
@@ -91,6 +95,7 @@ impl App {
             auth_manager.clone(),
             SessionSource::Cli,
         ));
+        conversation_manager.init_self_ref();
 
         let enhanced_keys_supported = tui.enhanced_keys_supported();
 
@@ -137,6 +142,10 @@ impl App {
 
         let file_search = FileSearchManager::new(config.cwd.clone(), app_event_tx.clone());
 
+        // Orchestrator will be initialized lazily when first needed
+        // (when config has orchestrator_profile and agent_profiles set)
+        let orchestrator = None;
+
         let mut app = Self {
             server: conversation_manager,
             app_event_tx,
@@ -152,6 +161,7 @@ impl App {
             has_emitted_history_lines: false,
             commit_anim_running: Arc::new(AtomicBool::new(false)),
             backtrack: BacktrackState::default(),
+            orchestrator,
         };
 
         let tui_events = tui.event_stream();
@@ -520,6 +530,7 @@ mod tests {
             enhanced_keys_supported: false,
             commit_anim_running: Arc::new(AtomicBool::new(false)),
             backtrack: BacktrackState::default(),
+            orchestrator: None,
         }
     }
 

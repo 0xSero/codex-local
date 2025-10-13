@@ -1,0 +1,17 @@
+[package]
+name = "codex-orchestrator"
+version = "1.0.0-local-26f7c468"
+edition = "2021"
+
+[dependencies]
+codex-core = { path = "../core" }
+codex-protocol = { path = "../protocol" }
+tokio = { version = "1.43", features = ["full"] }
+tracing = "0.1"
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+uuid = { version = "1.0", features = ["v4", "serde"] }
+
+[dev-dependencies]
+tempfile = "3.13"

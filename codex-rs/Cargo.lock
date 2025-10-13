@@ -1277,6 +1277,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "codex-orchestrator"
+version = "1.0.0-local-26f7c468"
+dependencies = [
+ "anyhow",
+ "codex-core",
+ "codex-protocol",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "codex-otel"
 version = "1.0.0-local-26f7c468"
 dependencies = [
@@ -1398,6 +1413,7 @@ dependencies = [
  "codex-git-tooling",
  "codex-login",
  "codex-ollama",
+ "codex-orchestrator",
  "codex-protocol",
  "color-eyre",
  "crossterm",

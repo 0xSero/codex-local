@@ -1065,7 +1065,11 @@ pub(crate) fn new_error_event(message: String) -> PlainHistoryCell {
 
 /// Render a user‑friendly plan update styled like a checkbox todo list.
 pub(crate) fn new_plan_update(update: UpdatePlanArgs) -> PlanUpdateCell {
-    let UpdatePlanArgs { explanation, plan } = update;
+    let UpdatePlanArgs {
+        explanation,
+        plan,
+        agent_id: _, // Ignore agent_id for now, will be used in multi-agent UI
+    } = update;
     PlanUpdateCell { explanation, plan }
 }
 
@@ -1975,7 +1979,7 @@ mod tests {
         // Long explanation forces wrapping; include long step text to verify step wrapping and alignment.
         let update = UpdatePlanArgs {
             explanation: Some(
-                "I’ll update Grafana call error handling by adding retries and clearer messages when the backend is unreachable."
+                "I'll update Grafana call error handling by adding retries and clearer messages when the backend is unreachable."
                     .to_string(),
             ),
             plan: vec![
@@ -1992,6 +1996,7 @@ mod tests {
                     status: StepStatus::Pending,
                 },
             ],
+            agent_id: None,
         };
 
         let cell = new_plan_update(update);
@@ -2015,6 +2020,7 @@ mod tests {
                     status: StepStatus::Pending,
                 },
             ],
+            agent_id: None,
         };
 
         let cell = new_plan_update(update);

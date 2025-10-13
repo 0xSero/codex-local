@@ -2043,6 +2043,7 @@ fn plan_update_renders_history_cell() {
                 status: StepStatus::Pending,
             },
         ],
+        agent_id: None,
     };
     chat.handle_codex_event(Event {
         id: "sub-1".into(),

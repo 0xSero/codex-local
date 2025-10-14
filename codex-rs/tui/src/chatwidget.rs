@@ -278,7 +278,12 @@ impl SubAgentState {
                 self.message_buffer.push_str(&delta.delta);
             }
             EventMsg::AgentMessage(ev) => {
-                self.flush_message(Some(ev.message), config, &mut outputs);
+                // For subagents, avoid spam in the transcript while still
+                // keeping status fresh. Only record the status here; final
+                // message will be rendered via AgentCompleted summary.
+                self.message_buffer = ev.message;
+                self.record_status("responded");
+                self.message_buffer.clear();
             }
             EventMsg::AgentReasoningDelta(delta) => {
                 self.reasoning_buffer.push_str(&delta.delta);
@@ -287,7 +292,11 @@ impl SubAgentState {
                 if !ev.text.trim().is_empty() {
                     self.reasoning_buffer.push_str(&ev.text);
                 }
-                self.flush_reasoning(config, &mut outputs);
+                // Collapse reasoning blocks for subagents to keep the
+                // transcript clean; surface activity via footer status only.
+                self.reasoning_buffer.clear();
+                self.full_reasoning_buffer.clear();
+                self.record_status("reasoning");
             }
             EventMsg::AgentReasoningRawContentDelta(delta) => {
                 self.reasoning_buffer.push_str(&delta.delta);
@@ -296,34 +305,48 @@ impl SubAgentState {
                 if !ev.text.trim().is_empty() {
                     self.reasoning_buffer.push_str(&ev.text);
                 }
-                self.flush_reasoning(config, &mut outputs);
+                // Do not render raw reasoning for subagents; keep footer updated.
+                self.reasoning_buffer.clear();
+                self.full_reasoning_buffer.clear();
+                self.record_status("reasoning");
             }
             EventMsg::AgentReasoningSectionBreak(_) => {
                 self.reasoning_section_break();
             }
             EventMsg::ExecCommandBegin(ev) => {
-                self.handle_exec_begin(ev, config, &mut outputs);
+                // Suppress per-call exec rendering for subagents; keep a concise status
+                let snippet = join_command_preview(&ev.command);
+                self.record_status(&format!("exec {snippet}"));
             }
             EventMsg::ExecCommandEnd(ev) => {
-                self.handle_exec_end(ev, &mut outputs);
+                // Suppress per-call exec rendering for subagents; update status
+                self.record_status(&format!("exec exit {}", ev.exit_code));
             }
             EventMsg::McpToolCallBegin(ev) => {
-                self.handle_mcp_begin(ev, config, &mut outputs);
+                // Avoid verbose tool call content for subagents
+                self.record_status(&format!(
+                    "tool {}.{}",
+                    ev.invocation.server, ev.invocation.tool
+                ));
             }
             EventMsg::McpToolCallEnd(ev) => {
-                self.handle_mcp_end(ev, &mut outputs);
+                // Only reflect final status
+                self.record_status(&format!(
+                    "tool {}.{} {}",
+                    ev.invocation.server,
+                    ev.invocation.tool,
+                    if ev.is_success() { "ok" } else { "failed" }
+                ));
             }
             EventMsg::ViewImageToolCall(ev) => {
-                let cell = history_cell::new_view_image_tool_call(ev.path, &config.cwd);
-                outputs.push(self.decorate_body(Self::boxed(cell)));
+                // Skip image/tool visualization for subagents; update status only
                 self.record_status("viewed image");
             }
             EventMsg::WebSearchBegin(_) => {
                 self.record_status("searching…");
             }
             EventMsg::WebSearchEnd(ev) => {
-                let cell = history_cell::new_web_search_call(format!("Searched: {}", ev.query));
-                outputs.push(self.decorate_body(Self::boxed(cell)));
+                // Keep a short status only
                 self.record_status(&format!("search \"{}\"", ev.query));
             }
             EventMsg::TokenCount(ev) => {
@@ -427,20 +450,30 @@ impl SubAgentState {
     }
 
     fn decorate_header(&self, cell: Box<dyn HistoryCell>) -> Box<dyn HistoryCell> {
-        self.decorate_with(
-            cell,
-            Self::make_prefix("╭ ", self.color),
-            Self::make_prefix("│ ", self.color),
-        )
+        // Header gets a clean, subtle treatment with the agent color
+        let header_bullet = Span::styled("▪ ", Style::default().fg(self.color));
+        let header_prefix = Line::from(vec![header_bullet]);
+        let body_prefix = Line::from(vec![Span::styled(
+            "  ",
+            Style::default().fg(self.color).dim(),
+        )]);
+        self.decorate_with(cell, header_prefix, body_prefix)
     }
 
     fn decorate_body(&self, cell: Box<dyn HistoryCell>) -> Box<dyn HistoryCell> {
-        let prefix = Self::make_prefix("│ ", self.color);
+        // Create a clean card-like layout with subtle indentation
+        let indent = Span::styled("   ", Style::default().fg(self.color));
+        let prefix = Line::from(vec![indent]);
         self.decorate_with(cell, prefix.clone(), prefix)
     }
 
     fn decorate_footer(&self, cell: Box<dyn HistoryCell>) -> Box<dyn HistoryCell> {
-        self.decorate_with(cell, Self::make_prefix("╰ ", self.color), Line::from("  "))
+        // Footer gets minimal treatment
+        let prefix = Line::from(vec![Span::styled(
+            "   ",
+            Style::default().fg(self.color).dim(),
+        )]);
+        self.decorate_with(cell, prefix.clone(), prefix)
     }
 
     fn make_prefix(symbol: &str, color: Color) -> Line<'static> {
@@ -784,7 +817,10 @@ impl ChatWidget {
 
             // Find the agent number for display
             let agent_ids: Vec<String> = self.agents.keys().cloned().collect();
-            let agent_number = agent_ids.iter().position(|id| id == agent_id).map(|i| i + 1);
+            let agent_number = agent_ids
+                .iter()
+                .position(|id| id == agent_id)
+                .map(|i| i + 1);
             let total_agents = agent_ids.len();
 
             let label = self
@@ -802,9 +838,9 @@ impl ChatWidget {
 
             // Add agent number to label if available
             let label_with_number = if let Some(num) = agent_number {
-                format!("{}. {} (Ctrl+{})", num, label, num)
+                format!("{num}. {label} (Ctrl+{num})")
             } else {
-                format!("{} ({})", label, total_agents)
+                format!("{label} ({total_agents})")
             };
 
             Some(FooterSubagentInfo {
@@ -1185,8 +1221,7 @@ impl ChatWidget {
         let event = *agent_event.event;
 
         // Assign different colors to different agents for better visual distinction
-        let agent_colors = vec![
-            Color::Cyan,
+        let agent_colors = [Color::Cyan,
             Color::Green,
             Color::Yellow,
             Color::Blue,
@@ -1194,14 +1229,16 @@ impl ChatWidget {
             Color::Red,
             Color::White,
             Color::LightGreen,
-            Color::LightBlue,
-        ];
+            Color::LightBlue];
 
         // Find consistent color assignment based on agent order
         let agent_ids: Vec<String> = self.agents.keys().cloned().collect();
-        let agent_index = agent_ids.iter().position(|id| id == &agent_id)
-            .unwrap_or_else(|| self.subagent_states.len());
-        let color = agent_colors.get(agent_index % agent_colors.len())
+        let agent_index = agent_ids
+            .iter()
+            .position(|id| id == &agent_id)
+            .unwrap_or(self.subagent_states.len());
+        let color = agent_colors
+            .get(agent_index % agent_colors.len())
             .copied()
             .unwrap_or(Color::Magenta);
 
@@ -1210,9 +1247,9 @@ impl ChatWidget {
             .entry(agent_id.clone())
             .or_insert_with(|| SubAgentState::new(color));
         let outputs = state.handle_event(event, &self.config);
-        for cell in outputs {
-            self.add_boxed_history(cell);
-        }
+        // We intentionally do not add intermediate subagent output cells
+        // to the transcript to keep the UI compact; the footer shows a
+        // concise, colored status bar for the active subagent.
         self.active_subagent = Some(agent_id);
         self.refresh_footer_subagent();
         self.request_redraw();
@@ -2337,19 +2374,11 @@ impl ChatWidget {
                         }
                     }
 
-                    let view = history_cell::AgentCardView {
-                        agent_id: &agent_id,
-                        profile: meta.profile.as_deref(),
-                        purpose: &meta.purpose,
-                        status: meta.status,
-                        summary: meta.last_summary.as_deref(),
-                        context_percent: meta.context_percent,
-                        transcript: &meta.transcript,
-                    };
-                    let cell = history_cell::new_agent_progress_event(view);
-                    self.add_to_history(cell);
+                    // Do not append a new progress card for each update to avoid spam.
+                    // The footer shows current status + context percent; a single
+                    // completion card will be added on AgentCompleted.
                 } else {
-                    self.add_to_history(history_cell::new_agent_progress_fallback(ev.clone()));
+                    // If we haven't seen this agent yet, fall back to nothing to keep UI clean
                 }
 
                 {
@@ -2389,6 +2418,8 @@ impl ChatWidget {
                     fallback = None;
                 }
 
+                // Always add a single compact completion summary so users
+                // see the result without the intermediate noise.
                 if let Some(ev) = fallback {
                     self.add_to_history(history_cell::new_agent_completed_event(ev));
                 }
@@ -2937,12 +2968,15 @@ impl ChatWidget {
                 } else {
                     meta.purpose.clone()
                 };
-                info.push_str(&format!("**Ctrl+{}**: {}\n", num, purpose));
+                info.push_str(&format!("**Ctrl+{num}**: {purpose}\n"));
             }
         }
 
         if total_agents > 9 {
-            info.push_str(&format!("... and {} more (use **Alt+A** to see all)\n", total_agents - 9));
+            info.push_str(&format!(
+                "... and {} more (use **Alt+A** to see all)\n",
+                total_agents - 9
+            ));
         }
 
         info.push_str("\n**Ctrl+0**: Return to main agent\n");

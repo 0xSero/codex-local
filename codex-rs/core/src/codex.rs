@@ -1729,6 +1729,11 @@ pub(crate) async fn run_task(
     }
 
     let mut last_agent_message: Option<String> = None;
+    // Track whether the previous iteration replied to any tool calls. If the
+    // next turn yields no content, we can gently nudge the model to use the
+    // tool output to finish the task instead of stopping early.
+    let mut had_tool_responses_prev_iteration = false;
+    let mut nudged_after_empty_turn = false;
     // Although from the perspective of codex.rs, TurnDiffTracker has the lifecycle of a Task which contains
     // many turns, from the perspective of the user, it is a single turn.
     let turn_diff_tracker = Arc::new(tokio::sync::Mutex::new(TurnDiffTracker::new()));
@@ -1931,6 +1936,29 @@ pub(crate) async fn run_task(
                 auto_compact_recently_attempted = false;
 
                 if responses.is_empty() {
+                    // If we just sent tool outputs in the prior iteration and the
+                    // model produced no content in response, nudge it once to
+                    // continue using the tool results. This helps recover cases
+                    // where the model stops after a tool call instead of
+                    // returning an answer.
+                    if last_agent_message.is_none()
+                        && had_tool_responses_prev_iteration
+                        && !nudged_after_empty_turn
+                        && !is_review_mode
+                    {
+                        let prompt = "Use the previous tool results to finish the task. Summarize the outcome clearly and provide the final answer or next steps.".to_string();
+                        let user_msg = ResponseItem::Message {
+                            id: None,
+                            role: "user".to_string(),
+                            content: vec![ContentItem::InputText { text: prompt }],
+                        };
+                        sess.record_conversation_items(&[user_msg]).await;
+                        nudged_after_empty_turn = true;
+                        // Try one more turn
+                        // Reset the flag so we don't consider this as a tool-output turn
+                        had_tool_responses_prev_iteration = false;
+                        continue;
+                    }
                     last_agent_message = get_last_assistant_message_from_turn(
                         &items_to_record_in_conversation_history,
                     );
@@ -1942,6 +1970,8 @@ pub(crate) async fn run_task(
                         });
                     break;
                 }
+                // Remember whether we emitted tool results this turn to assist recovery next turn.
+                had_tool_responses_prev_iteration = !responses.is_empty();
                 continue;
             }
             Err(e) => {

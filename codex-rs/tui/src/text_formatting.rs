@@ -62,8 +62,9 @@ pub(crate) fn format_xml_thinking_blocks(text: &str) -> String {
                             // Check for non-whitespace content after sanitization
                             // Also ensure we have at least some meaningful characters
                             if !block_content.is_empty()
-                                && !block_content.chars().all(|c| c.is_whitespace())
-                                && block_content.len() > 0 {
+                                && !block_content.chars().all(char::is_whitespace)
+                                && !block_content.is_empty()
+                            {
                                 // Render the thinking block with proper borders
                                 result.push('\n');
                                 result.push_str("╭─ 💭 Thinking ");

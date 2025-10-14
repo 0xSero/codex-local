@@ -148,29 +148,31 @@ impl ToolHandler for SpawnAgentHandler {
             .register_child_agent(args.task_id.clone(), child.conversation.clone())
             .await;
 
-        // Monitor the child conversation and emit completion back to the parent as a UI event.
-        let parent_session = session.clone();
-        let parent_sub_id = sub_id.clone();
-        let agent_id_for_monitor = args.task_id.clone();
-        let child_conversation = child.conversation.clone();
+        // Create a channel to communicate completion from the monitoring task to the main handler.
+        // This avoids having two consumers of the same event stream (which causes race conditions).
+        let (completion_tx, completion_rx) = tokio::sync::oneshot::channel();
+
+        // Monitor the child conversation and emit UI events in the background.
+        // When complete, send the final result through the completion channel.
+        let parent_session_for_ui = session.clone();
+        let parent_sub_id_for_ui = sub_id.clone();
+        let agent_id_for_ui = args.task_id.clone();
+        let child_conversation_for_ui = child.conversation.clone();
         tokio::spawn(async move {
             use std::time::Duration;
             use std::time::Instant;
-            // Track the last assistant message so we can summarize on completion.
-            let mut last_message: Option<String> = None;
-            // Progress buffer for streaming deltas
             let mut progress_buffer = String::new();
             let mut last_progress_emit = Instant::now();
             let progress_interval = Duration::from_millis(900);
+            let mut last_message: Option<String> = None;
 
-            // helper to emit a progress message
             let emit_progress = |text: String| async {
-                let _ = parent_session
+                let _ = parent_session_for_ui
                     .send_event(Event {
-                        id: parent_sub_id.clone(),
+                        id: parent_sub_id_for_ui.clone(),
                         msg: EventMsg::AgentProgress(
                             codex_protocol::protocol::AgentProgressEvent {
-                                agent_id: agent_id_for_monitor.clone(),
+                                agent_id: agent_id_for_ui.clone(),
                                 message: text,
                             },
                         ),
@@ -179,18 +181,18 @@ impl ToolHandler for SpawnAgentHandler {
             };
 
             loop {
-                let event = match child_conversation.next_event().await {
+                let event = match child_conversation_for_ui.next_event().await {
                     Ok(event) => event,
                     Err(_) => break,
                 };
 
                 let forwarded = EventMsg::AgentEvent(AgentEvent {
-                    agent_id: agent_id_for_monitor.clone(),
+                    agent_id: agent_id_for_ui.clone(),
                     event: Box::new(event.clone()),
                 });
-                let _ = parent_session
+                let _ = parent_session_for_ui
                     .send_event(Event {
-                        id: parent_sub_id.clone(),
+                        id: parent_sub_id_for_ui.clone(),
                         msg: forwarded,
                     })
                     .await;
@@ -264,117 +266,128 @@ impl ToolHandler for SpawnAgentHandler {
                     codex_protocol::protocol::EventMsg::TaskComplete(TaskCompleteEvent {
                         last_agent_message,
                     }) => {
-                        let mut summary = String::from("Child agent finished");
-                        let mut final_message = String::new();
+                        let final_message =
+                            last_agent_message.or(last_message).unwrap_or_else(|| {
+                                "Child agent completed without returning a message.".to_string()
+                            });
 
-                        if let Some(msg) = last_agent_message.or(last_message.take()) {
-                            let snippet = msg.lines().next().unwrap_or("");
-                            if !snippet.is_empty() {
-                                summary = format!("Finished: {snippet}");
-                            }
-                            final_message = msg;
-                        }
+                        let summary = format!(
+                            "Child agent '{agent_id_for_ui}' completed successfully.\n\n\
+                             --- Results from child agent ---\n{final_message}\n--- End results ---"
+                        );
 
-                        
-                        let _ = parent_session
+                        let _ = parent_session_for_ui
                             .send_event(Event {
-                                id: parent_sub_id.clone(),
+                                id: parent_sub_id_for_ui.clone(),
                                 msg: EventMsg::AgentCompleted(
                                     codex_protocol::protocol::AgentCompletedEvent {
-                                        agent_id: agent_id_for_monitor.clone(),
+                                        agent_id: agent_id_for_ui.clone(),
                                         success: true,
                                         summary,
                                     },
                                 ),
                             })
                             .await;
+
+                        parent_session_for_ui
+                            .unregister_child_agent(&agent_id_for_ui)
+                            .await;
+
+                        // Send completion result through channel
+                        let _ = completion_tx.send(Ok(final_message));
                         break;
                     }
                     codex_protocol::protocol::EventMsg::Error(err) => {
-                        
-                        let _ = parent_session
+                        let error_message = format!(
+                            "Child agent '{}' encountered an error:\n{}",
+                            agent_id_for_ui, err.message
+                        );
+
+                        let _ = parent_session_for_ui
                             .send_event(Event {
-                                id: parent_sub_id.clone(),
+                                id: parent_sub_id_for_ui.clone(),
                                 msg: EventMsg::AgentCompleted(
                                     codex_protocol::protocol::AgentCompletedEvent {
-                                        agent_id: agent_id_for_monitor.clone(),
+                                        agent_id: agent_id_for_ui.clone(),
                                         success: false,
-                                        summary: err.message,
+                                        summary: error_message.clone(),
                                     },
                                 ),
                             })
                             .await;
+
+                        parent_session_for_ui
+                            .unregister_child_agent(&agent_id_for_ui)
+                            .await;
+
+                        // Send error through channel
+                        let _ = completion_tx.send(Err(error_message));
                         break;
                     }
                     codex_protocol::protocol::EventMsg::TurnAborted(aborted) => {
-                        let (summary, progress_text) = match aborted.reason {
-                            codex_protocol::protocol::TurnAbortReason::Interrupted => (
-                                "Child agent interrupted by user".to_string(),
-                                "interrupted by user".to_string(),
-                            ),
-                            codex_protocol::protocol::TurnAbortReason::Replaced => (
-                                "Child agent replaced by another task".to_string(),
-                                "replaced by another task".to_string(),
-                            ),
-                            codex_protocol::protocol::TurnAbortReason::ReviewEnded => (
-                                "Child agent review ended".to_string(),
-                                "review ended".to_string(),
-                            ),
+                        let reason_text = match aborted.reason {
+                            codex_protocol::protocol::TurnAbortReason::Interrupted => {
+                                "interrupted by user"
+                            }
+                            codex_protocol::protocol::TurnAbortReason::Replaced => {
+                                "replaced by another task"
+                            }
+                            codex_protocol::protocol::TurnAbortReason::ReviewEnded => {
+                                "review ended"
+                            }
                         };
-                        emit_progress(progress_text).await;
-                        let _ = parent_session
+
+                        let abort_message =
+                            format!("Child agent '{agent_id_for_ui}' was {reason_text}");
+
+                        let _ = parent_session_for_ui
                             .send_event(Event {
-                                id: parent_sub_id.clone(),
+                                id: parent_sub_id_for_ui.clone(),
                                 msg: EventMsg::AgentCompleted(
                                     codex_protocol::protocol::AgentCompletedEvent {
-                                        agent_id: agent_id_for_monitor.clone(),
+                                        agent_id: agent_id_for_ui.clone(),
                                         success: false,
-                                        summary,
+                                        summary: abort_message.clone(),
                                     },
                                 ),
                             })
                             .await;
+
+                        parent_session_for_ui
+                            .unregister_child_agent(&agent_id_for_ui)
+                            .await;
+
+                        // Send abort through channel
+                        let _ = completion_tx.send(Err(abort_message));
                         break;
                     }
                     _ => {}
                 }
             }
-            parent_session
-                .unregister_child_agent(&agent_id_for_monitor)
-                .await;
         });
 
-        let _checklist_str = if args.checklist.is_empty() {
-            String::new()
-        } else {
-            format!(
-                "\nChecklist:\n{}",
-                args.checklist
-                    .iter()
-                    .map(|item| format!("- {item}"))
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            )
-        };
-
-        let profile_str = selected_profile
-            .as_ref()
-            .map(|p| format!(" (profile: {p})"))
-            .unwrap_or_default();
-
-        let response = format!(
-            "Child agent spawned successfully!\n\
-             Task ID: {}\n\
-             Purpose: {}\n\
-             Conversation ID: {}{}\n\
-             \n\
-             The child agent is now working on this task in a separate conversation context.",
-            args.task_id, args.purpose, child.conversation_id, profile_str
-        );
-
-        Ok(ToolOutput::Function {
-            content: response,
-            success: Some(true),
-        })
+        // WAIT for child agent to complete via the completion channel.
+        // The background task monitors events and sends the final result.
+        match completion_rx.await {
+            Ok(Ok(final_message)) => {
+                // Child completed successfully - return the final message as tool result.
+                // This gets added to the parent conversation context.
+                Ok(ToolOutput::Function {
+                    content: final_message,
+                    success: Some(true),
+                })
+            }
+            Ok(Err(error_message)) => {
+                // Child failed - return error
+                Err(FunctionCallError::RespondToModel(error_message))
+            }
+            Err(_) => {
+                // Channel closed unexpectedly (background task panicked?)
+                session.unregister_child_agent(&args.task_id).await;
+                Err(FunctionCallError::RespondToModel(
+                    "Child agent monitoring task failed unexpectedly".to_string(),
+                ))
+            }
+        }
     }
 }

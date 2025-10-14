@@ -1,40 +1,54 @@
-use std::path::PathBuf;
 use serde::Deserialize;
+use std::collections::HashMap;
 
-#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
-struct TestConfig {
+#[derive(Deserialize, Debug, Clone, Default, PartialEq)]
+pub struct ConfigToml {
+    pub profile: Option<String>,
     pub orchestrator_profile: Option<String>,
     #[serde(default)]
     pub agent_profiles: Option<Vec<String>>,
+    #[serde(default)]
+    pub profiles: HashMap<String, serde_json::Value>,
 }
 
 fn main() {
-    let config_path = PathBuf::from("/Users/sero/.codex-local/config.toml");
+    let config_path = "/Users/sero/.codex-local/config.toml";
 
-    println!("Reading config from: {:?}", config_path);
+    println!("Reading config from: {}", config_path);
 
-    if let Ok(content) = std::fs::read_to_string(&config_path) {
-        println!("Config file content preview:");
-        let lines: Vec<&str> = content.lines().collect();
-        for (i, line) in lines.iter().enumerate() {
-            if i < 10 || i >= lines.len() - 10 {
-                println!("  {}: {}", i + 1, line);
-            } else if i == 10 {
-                println!("  ...");
-            }
+    let config_content = std::fs::read_to_string(config_path)
+        .expect("Failed to read config file");
+
+    let config: ConfigToml = toml::from_str(&config_content)
+        .expect("Failed to parse config");
+
+    println!("Parsed configuration:");
+    println!("  profile: {:?}", config.profile);
+    println!("  orchestrator_profile: {:?}", config.orchestrator_profile);
+    println!("  agent_profiles: {:?}", config.agent_profiles);
+
+    // Check if required orchestrator profiles exist
+    if let Some(orchestrator) = &config.orchestrator_profile {
+        println!("  Orchestrator profile requested: {}", orchestrator);
+        if !config.profiles.contains_key(orchestrator) {
+            println!("  ❌ ERROR: orchestrator_profile '{}' not found in profiles!", orchestrator);
+        } else {
+            println!("  ✅ Orchestrator profile '{}' found", orchestrator);
         }
+    } else {
+        println!("  ℹ️  No orchestrator_profile configured");
+    }
 
-        match toml::from_str::<TestConfig>(&content) {
-            Ok(config) => {
-                println!("\nParsed config:");
-                println!("  orchestrator_profile: {:?}", config.orchestrator_profile);
-                println!("  agent_profiles: {:?}", config.agent_profiles);
-            }
-            Err(e) => {
-                println!("Error parsing config: {}", e);
+    if let Some(agents) = &config.agent_profiles {
+        println!("  Agent profiles: {:?}", agents);
+        for agent in agents {
+            if !config.profiles.contains_key(agent) {
+                println!("  ❌ ERROR: agent profile '{}' not found in profiles!", agent);
+            } else {
+                println!("  ✅ Agent profile '{}' found", agent);
             }
         }
     } else {
-        println!("Could not read config file");
+        println!("  ℹ️  No agent_profiles configured");
     }
 }

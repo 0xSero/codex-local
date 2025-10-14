@@ -1,3 +1,7 @@
+use crate::config::Config as CoreConfig;
+use crate::config::ConfigOverrides;
+use crate::config::ConfigToml;
+use crate::config::load_config_as_toml_with_cli_overrides;
 use crate::function_tool::FunctionCallError;
 use crate::tools::context::ToolInvocation;
 use crate::tools::context::ToolOutput;
@@ -5,10 +9,6 @@ use crate::tools::context::ToolPayload;
 use crate::tools::registry::ToolHandler;
 use crate::tools::registry::ToolKind;
 use async_trait::async_trait;
-use crate::config::Config as CoreConfig;
-use crate::config::ConfigOverrides;
-use crate::config::ConfigToml;
-use crate::config::load_config_as_toml_with_cli_overrides;
 use codex_protocol::protocol::AgentSpawnedEvent;
 use codex_protocol::protocol::Event;
 use codex_protocol::protocol::EventMsg;
@@ -38,7 +38,7 @@ impl ToolHandler for SpawnAgentHandler {
     async fn handle(&self, invocation: ToolInvocation) -> Result<ToolOutput, FunctionCallError> {
         let ToolInvocation {
             session,
-            
+
             payload,
             sub_id,
             ..
@@ -73,9 +73,11 @@ impl ToolHandler for SpawnAgentHandler {
             let codex_home = parent_config.codex_home.clone();
             let cfg_toml: ConfigToml = load_config_as_toml_with_cli_overrides(&codex_home, vec![])
                 .await
-                .map_err(|e| FunctionCallError::RespondToModel(format!(
-                    "Failed to load config.toml for child agent: {e}"
-                )))?;
+                .map_err(|e| {
+                    FunctionCallError::RespondToModel(format!(
+                        "Failed to load config.toml for child agent: {e}"
+                    ))
+                })?;
             CoreConfig::load_from_base_config_with_overrides(
                 cfg_toml,
                 ConfigOverrides {

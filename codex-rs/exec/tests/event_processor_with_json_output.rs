@@ -135,6 +135,7 @@ fn plan_update_emits_todo_list_started_updated_and_completed() {
                     status: StepStatus::InProgress,
                 },
             ],
+            agent_id: None,
         }),
     );
     let out_first = ep.collect_thread_events(&first);
@@ -174,6 +175,7 @@ fn plan_update_emits_todo_list_started_updated_and_completed() {
                     status: StepStatus::InProgress,
                 },
             ],
+            agent_id: None,
         }),
     );
     let out_second = ep.collect_thread_events(&second);
@@ -349,6 +351,7 @@ fn plan_update_after_complete_starts_new_todo_list_with_new_id() {
                 step: "only".to_string(),
                 status: StepStatus::Pending,
             }],
+            agent_id: None,
         }),
     );
     let _ = ep.collect_thread_events(&start);
@@ -369,6 +372,7 @@ fn plan_update_after_complete_starts_new_todo_list_with_new_id() {
                 step: "again".to_string(),
                 status: StepStatus::Pending,
             }],
+            agent_id: None,
         }),
     );
     let out = ep.collect_thread_events(&start_again);

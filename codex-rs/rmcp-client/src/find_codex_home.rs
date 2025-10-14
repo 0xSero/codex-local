@@ -7,7 +7,7 @@ use std::path::PathBuf;
 ///
 /// Returns the path to the Codex configuration directory, which can be
 /// specified by the `CODEX_HOME` environment variable. If not set, defaults to
-/// `~/.codex`.
+/// `~/.codex-local`.
 ///
 /// - If `CODEX_HOME` is set, the value will be canonicalized and this
 ///   function will Err if the path does not exist.
@@ -28,6 +28,6 @@ pub(crate) fn find_codex_home() -> std::io::Result<PathBuf> {
             "Could not find home directory",
         )
     })?;
-    p.push(".codex");
+    p.push(".codex-local");
     Ok(p)
 }

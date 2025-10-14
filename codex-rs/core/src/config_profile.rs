@@ -20,6 +20,12 @@ pub struct ConfigProfile {
     pub model_verbosity: Option<Verbosity>,
     pub chatgpt_base_url: Option<String>,
     pub experimental_instructions_file: Option<PathBuf>,
+    /// Size of the context window for the model, in tokens.
+    pub model_context_window: Option<u64>,
+    /// Maximum number of output tokens.
+    pub model_max_output_tokens: Option<u64>,
+    /// Token usage threshold triggering auto-compaction of conversation history.
+    pub model_auto_compact_token_limit: Option<i64>,
 }
 
 impl From<ConfigProfile> for codex_app_server_protocol::Profile {
@@ -32,6 +38,9 @@ impl From<ConfigProfile> for codex_app_server_protocol::Profile {
             model_reasoning_summary: config_profile.model_reasoning_summary,
             model_verbosity: config_profile.model_verbosity,
             chatgpt_base_url: config_profile.chatgpt_base_url,
+            model_context_window: config_profile.model_context_window,
+            model_max_output_tokens: config_profile.model_max_output_tokens,
+            model_auto_compact_token_limit: config_profile.model_auto_compact_token_limit,
         }
     }
 }

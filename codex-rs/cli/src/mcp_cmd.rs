@@ -24,7 +24,7 @@ use codex_rmcp_client::perform_oauth_login;
 /// - `serve`  — run the MCP server on stdio
 /// - `list`   — list configured servers (with `--json`)
 /// - `get`    — show a single server (with `--json`)
-/// - `add`    — add a server launcher entry to `~/.codex/config.toml`
+/// - `add`    — add a server launcher entry to `~/.codex-local/config.toml`
 /// - `remove` — delete a server entry
 #[derive(Debug, clap::Parser)]
 pub struct McpCli {

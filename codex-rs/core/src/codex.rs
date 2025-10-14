@@ -2767,6 +2767,8 @@ mod tests {
             use_streamable_shell_tool: config.use_experimental_streamable_shell_tool,
             include_view_image_tool: config.include_view_image_tool,
             experimental_unified_exec_tool: config.use_experimental_unified_exec_tool,
+            include_spawn_agent_tool: config.active_orchestrator_profile.is_some()
+                && !config.active_agent_profiles.is_empty(),
         });
         let turn_context = TurnContext {
             client,
@@ -2793,6 +2795,8 @@ mod tests {
                 turn_context.cwd.clone(),
                 None,
             )),
+            conversation_manager: ConversationManager::default(),
+            config: config.clone(),
         };
         let session = Session {
             conversation_id,
@@ -2840,6 +2844,8 @@ mod tests {
             use_streamable_shell_tool: config.use_experimental_streamable_shell_tool,
             include_view_image_tool: config.include_view_image_tool,
             experimental_unified_exec_tool: config.use_experimental_unified_exec_tool,
+            include_spawn_agent_tool: config.active_orchestrator_profile.is_some()
+                && !config.active_agent_profiles.is_empty(),
         });
         let turn_context = Arc::new(TurnContext {
             client,
@@ -2866,6 +2872,8 @@ mod tests {
                 config.cwd.clone(),
                 None,
             )),
+            conversation_manager: ConversationManager::default(),
+            config: config.clone(),
         };
         let session = Arc::new(Session {
             conversation_id,

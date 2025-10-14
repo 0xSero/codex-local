@@ -112,6 +112,7 @@ pub(crate) struct ChatComposer {
     context_tokens_used: Option<u64>,
     context_tokens_max: Option<u64>,
     total_tokens_session: Option<u64>,
+    current_model: Option<String>,
 }
 
 /// Popup state – at most one can be visible at any time.
@@ -158,6 +159,7 @@ impl ChatComposer {
             context_tokens_used: None,
             context_tokens_max: None,
             total_tokens_session: None,
+            current_model: None,
         };
         // Apply configuration via the setter to keep side-effects centralized.
         this.set_disable_paste_burst(disable_paste_burst);
@@ -168,7 +170,7 @@ impl ChatComposer {
         let footer_props = self.footer_props();
         let footer_hint_height = self
             .custom_footer_height()
-            .unwrap_or_else(|| footer_height(footer_props));
+            .unwrap_or_else(|| footer_height(&footer_props));
         let footer_spacing = Self::footer_spacing(footer_hint_height);
         let footer_total_height = footer_hint_height + footer_spacing;
         self.textarea
@@ -185,7 +187,7 @@ impl ChatComposer {
         let footer_props = self.footer_props();
         let footer_hint_height = self
             .custom_footer_height()
-            .unwrap_or_else(|| footer_height(footer_props));
+            .unwrap_or_else(|| footer_height(&footer_props));
         let footer_spacing = Self::footer_spacing(footer_hint_height);
         let footer_total_height = footer_hint_height + footer_spacing;
         let popup_constraint = match &self.active_popup {
@@ -1350,6 +1352,7 @@ impl ChatComposer {
             context_tokens_used: self.context_tokens_used,
             context_tokens_max: self.context_tokens_max,
             total_tokens_session: self.total_tokens_session,
+            current_model: self.current_model.clone(),
         }
     }
 
@@ -1497,6 +1500,10 @@ impl ChatComposer {
         self.total_tokens_session = total_session;
     }
 
+    pub(crate) fn set_current_model(&mut self, model: String) {
+        self.current_model = Some(model);
+    }
+
     pub(crate) fn set_esc_backtrack_hint(&mut self, show: bool) {
         self.esc_backtrack_hint = show;
         if show {
@@ -1521,7 +1528,7 @@ impl WidgetRef for ChatComposer {
                 let footer_props = self.footer_props();
                 let custom_height = self.custom_footer_height();
                 let footer_hint_height =
-                    custom_height.unwrap_or_else(|| footer_height(footer_props));
+                    custom_height.unwrap_or_else(|| footer_height(&footer_props));
                 let footer_spacing = Self::footer_spacing(footer_hint_height);
                 let hint_rect = if footer_spacing > 0 && footer_hint_height > 0 {
                     let [_, hint_rect] = Layout::vertical([
@@ -1552,7 +1559,7 @@ impl WidgetRef for ChatComposer {
                         Line::from(spans).render_ref(custom_rect, buf);
                     }
                 } else {
-                    render_footer(hint_rect, buf, footer_props);
+                    render_footer(hint_rect, buf, &footer_props);
                 }
             }
         }
@@ -1717,7 +1724,7 @@ mod tests {
         );
         setup(&mut composer);
         let footer_props = composer.footer_props();
-        let footer_lines = footer_height(footer_props);
+        let footer_lines = footer_height(&footer_props);
         let footer_spacing = ChatComposer::footer_spacing(footer_lines);
         let height = footer_lines + footer_spacing + 8;
         let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();

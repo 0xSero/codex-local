@@ -4,5 +4,5 @@ expression: terminal.backend()
 ---
 "                                                            "
 "› /mo                                                       "
-"  /model    choose what model and reasoning effort to use   "
-"  /mention  mention a file                                  "
+"  /model   choose what model and reasoning effort to use    "
+"  /models  list available models from /v1/models endpoint   "

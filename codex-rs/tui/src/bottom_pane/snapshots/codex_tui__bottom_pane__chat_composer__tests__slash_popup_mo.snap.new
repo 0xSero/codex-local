@@ -1,9 +1,0 @@
----
-source: tui/src/bottom_pane/chat_composer.rs
-assertion_line: 2200
-expression: terminal.backend()
----
-"                                                            "
-"› /mo                                                       "
-"  /model   choose what model and reasoning effort to use    "
-"  /models  list available models from /v1/models endpoint   "

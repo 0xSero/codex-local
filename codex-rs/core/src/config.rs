@@ -118,7 +118,7 @@ pub struct Config {
     /// appends one extra argument containing a JSON payload describing the
     /// event.
     ///
-    /// Example `~/.codex/config.toml` snippet:
+    /// Example `~/.codex-local/config.toml` snippet:
     ///
     /// ```toml
     /// notify = ["notify-send", "Codex"]
@@ -701,7 +701,7 @@ fn apply_toml_override(root: &mut TomlValue, path: &str, value: TomlValue) {
     }
 }
 
-/// Base config deserialized from ~/.codex/config.toml.
+/// Base config deserialized from ~/.codex-local/config.toml.
 #[derive(Deserialize, Debug, Clone, Default, PartialEq)]
 pub struct ConfigToml {
     /// Optional override of model selection.
@@ -1093,17 +1093,22 @@ impl Config {
         let openai_model_info = get_model_info(&model_family);
         let model_context_window = cfg
             .model_context_window
+            .or(config_profile.model_context_window)
             .or_else(|| openai_model_info.as_ref().map(|info| info.context_window));
-        let model_max_output_tokens = cfg.model_max_output_tokens.or_else(|| {
-            openai_model_info
-                .as_ref()
-                .map(|info| info.max_output_tokens)
-        });
-        let model_auto_compact_token_limit = cfg.model_auto_compact_token_limit.or_else(|| {
-            openai_model_info
-                .as_ref()
-                .and_then(|info| info.auto_compact_token_limit)
-        });
+        let model_max_output_tokens = cfg.model_max_output_tokens
+            .or(config_profile.model_max_output_tokens)
+            .or_else(|| {
+                openai_model_info
+                    .as_ref()
+                    .map(|info| info.max_output_tokens)
+            });
+        let model_auto_compact_token_limit = cfg.model_auto_compact_token_limit
+            .or(config_profile.model_auto_compact_token_limit)
+            .or_else(|| {
+                openai_model_info
+                    .as_ref()
+                    .and_then(|info| info.auto_compact_token_limit)
+            });
 
         // Load base instructions override from a file if specified. If the
         // path is relative, resolve it against the effective cwd so the
@@ -1291,7 +1296,7 @@ fn default_review_model() -> String {
 
 /// Returns the path to the Codex configuration directory, which can be
 /// specified by the `CODEX_HOME` environment variable. If not set, defaults to
-/// `~/.codex`.
+/// `~/.codex-local`.
 ///
 /// - If `CODEX_HOME` is set, the value will be canonicalized and this
 ///   function will Err if the path does not exist.
@@ -1312,7 +1317,7 @@ pub fn find_codex_home() -> std::io::Result<PathBuf> {
             "Could not find home directory",
         )
     })?;
-    p.push(".codex");
+    p.push(".codex-local");
     Ok(p)
 }
 

@@ -506,6 +506,12 @@ pub struct Profile {
     pub model_reasoning_summary: Option<ReasoningSummary>,
     pub model_verbosity: Option<Verbosity>,
     pub chatgpt_base_url: Option<String>,
+    /// Size of the context window for the model, in tokens.
+    pub model_context_window: Option<u64>,
+    /// Maximum number of output tokens.
+    pub model_max_output_tokens: Option<u64>,
+    /// Token usage threshold triggering auto-compaction of conversation history.
+    pub model_auto_compact_token_limit: Option<i64>,
 }
 /// MCP representation of a [`codex_core::config::ToolsToml`].
 #[derive(Deserialize, Debug, Clone, PartialEq, Serialize, TS)]

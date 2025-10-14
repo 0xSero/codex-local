@@ -55,11 +55,12 @@ impl ConversationManager {
         let _ = self.self_arc.set(Arc::clone(self));
     }
 
-    fn get_self_arc(&self) -> Arc<Self> {
-        self.self_arc
-            .get()
-            .expect("ConversationManager::init_self_ref must be called after creation")
-            .clone()
+    fn get_self_arc(&self) -> CodexResult<Arc<Self>> {
+        self.self_arc.get().cloned().ok_or_else(|| {
+            CodexErr::Fatal(
+                "ConversationManager::init_self_ref must be called after creation".to_string(),
+            )
+        })
     }
 
     /// Construct with a dummy AuthManager containing the provided CodexAuth.
@@ -81,7 +82,7 @@ impl ConversationManager {
         config: Config,
         auth_manager: Arc<AuthManager>,
     ) -> CodexResult<NewConversation> {
-        let self_arc = self.get_self_arc();
+        let self_arc = self.get_self_arc()?;
         let CodexSpawnOk {
             codex,
             conversation_id,
@@ -145,7 +146,7 @@ impl ConversationManager {
         rollout_path: PathBuf,
         auth_manager: Arc<AuthManager>,
     ) -> CodexResult<NewConversation> {
-        let self_arc = self.get_self_arc();
+        let self_arc = self.get_self_arc()?;
         let initial_history = RolloutRecorder::get_rollout_history(&rollout_path).await?;
         let CodexSpawnOk {
             codex,
@@ -188,7 +189,7 @@ impl ConversationManager {
 
         // Spawn a new conversation with the computed initial history.
         let auth_manager = self.auth_manager.clone();
-        let self_arc = self.get_self_arc();
+        let self_arc = self.get_self_arc()?;
         let CodexSpawnOk {
             codex,
             conversation_id,

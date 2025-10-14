@@ -70,6 +70,7 @@ tree-sitter-bash = { workspace = true }
 uuid = { workspace = true, features = ["serde", "v4"] }
 which = { workspace = true }
 wildmatch = { workspace = true }
+codex-utils-json-to-toml = { workspace = true }
 
 
 [target.'cfg(target_os = "linux")'.dependencies]

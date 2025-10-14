@@ -1,7 +1,9 @@
 mod macos;
 
 use crate::config::CONFIG_TOML_FILE;
+use codex_utils_json_to_toml::json_to_toml;
 use macos::load_managed_admin_config_layer;
+use serde_json as json;
 use std::io;
 use std::path::Path;
 use std::path::PathBuf;
@@ -85,7 +87,31 @@ async fn load_config_layers_internal(
         managed_config_path.unwrap_or_else(|| managed_config_default_path(codex_home));
 
     let user_config_path = codex_home.join(CONFIG_TOML_FILE);
-    let user_config = read_config_from_path(&user_config_path, true).await?;
+    let mut user_config = read_config_from_path(&user_config_path, true).await?;
+
+    // Compatibility: if config.toml is missing, try config.json and convert to TOML
+    if user_config.is_none() {
+        let json_path = codex_home.join("config.json");
+        match fs::read_to_string(&json_path).await {
+            Ok(contents) => match json::from_str::<json::Value>(&contents) {
+                Ok(value) => {
+                    user_config = Some(json_to_toml(value));
+                    tracing::info!("Loaded config from {}", json_path.display());
+                }
+                Err(err) => {
+                    tracing::error!("Failed to parse {}: {err}", json_path.display());
+                    return Err(io::Error::new(io::ErrorKind::InvalidData, err));
+                }
+            },
+            Err(err) if err.kind() == io::ErrorKind::NotFound => {
+                // silently ignore – pure default config
+            }
+            Err(err) => {
+                tracing::error!("Failed to read {}: {err}", json_path.display());
+                return Err(err);
+            }
+        }
+    }
     let managed_config = read_config_from_path(&managed_config_path, false).await?;
 
     #[cfg(target_os = "macos")]

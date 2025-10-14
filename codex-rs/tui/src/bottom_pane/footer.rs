@@ -11,7 +11,7 @@ use ratatui::text::Span;
 use ratatui::widgets::Paragraph;
 use ratatui::widgets::Widget;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct FooterProps {
     pub(crate) mode: FooterMode,
     pub(crate) esc_backtrack_hint: bool,
@@ -21,6 +21,7 @@ pub(crate) struct FooterProps {
     pub(crate) context_tokens_used: Option<u64>,
     pub(crate) context_tokens_max: Option<u64>,
     pub(crate) total_tokens_session: Option<u64>,
+    pub(crate) current_model: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -61,11 +62,11 @@ pub(crate) fn reset_mode_after_activity(current: FooterMode) -> FooterMode {
     }
 }
 
-pub(crate) fn footer_height(props: FooterProps) -> u16 {
+pub(crate) fn footer_height(props: &FooterProps) -> u16 {
     footer_lines(props).len() as u16
 }
 
-pub(crate) fn render_footer(area: Rect, buf: &mut Buffer, props: FooterProps) {
+pub(crate) fn render_footer(area: Rect, buf: &mut Buffer, props: &FooterProps) {
     Paragraph::new(prefix_lines(
         footer_lines(props),
         " ".repeat(FOOTER_INDENT_COLS).into(),
@@ -74,7 +75,7 @@ pub(crate) fn render_footer(area: Rect, buf: &mut Buffer, props: FooterProps) {
     .render(area, buf);
 }
 
-fn footer_lines(props: FooterProps) -> Vec<Line<'static>> {
+fn footer_lines(props: &FooterProps) -> Vec<Line<'static>> {
     // Show the context indicator on the left, appended after the primary hint
     // (e.g., "? for shortcuts"). Keep it visible even when typing (i.e., when
     // the shortcut hint is hidden). Hide it only for the multi-line
@@ -97,7 +98,7 @@ fn footer_lines(props: FooterProps) -> Vec<Line<'static>> {
             esc_backtrack_hint: props.esc_backtrack_hint,
         }),
         FooterMode::EscHint => vec![esc_hint_line(props.esc_backtrack_hint)],
-        FooterMode::ContextOnly => vec![context_window_line(&props)],
+        FooterMode::ContextOnly => vec![context_window_line(props)],
     }
 }
 
@@ -233,7 +234,7 @@ fn context_window_line(props: &FooterProps) -> Line<'static> {
             let remaining = max.saturating_sub(used);
             let total_session = props.total_tokens_session.unwrap_or(used);
             format!(
-                "{}% context left · {}/{} tokens ({}K used, {}K remaining, {}K total session)",
+                "{}% left · {}/{} ({}K used, {}K rem, {}K chat)",
                 percent,
                 used / 1000,
                 max / 1000,
@@ -246,7 +247,35 @@ fn context_window_line(props: &FooterProps) -> Line<'static> {
             format!("{percent}% context left")
         };
 
-    Line::from(vec![Span::from(text).dim()])
+    // Prepend cleaned model name when available
+    if let Some(model) = &props.current_model {
+        let cleaned_model = clean_model_name(model);
+        Line::from(vec![
+            Span::from(cleaned_model).dim(),
+            " ".into(),
+            "·".dim(),
+            " ".into(),
+            Span::from(text).dim(),
+        ])
+    } else {
+        Line::from(vec![Span::from(text).dim()])
+    }
+}
+
+/// Clean up model name for display by stripping path prefixes and suffixes
+fn clean_model_name(model: &str) -> String {
+    // Strip /mnt/llm_models/ prefix if present
+    let without_prefix = model.strip_prefix("/mnt/llm_models/").unwrap_or(model);
+
+    // Strip -AWQ, -GPTQ, and similar quantization suffixes
+    let without_suffix = without_prefix
+        .strip_suffix("-AWQ-4bit")
+        .or_else(|| without_prefix.strip_suffix("-GPTQ-4bit"))
+        .or_else(|| without_prefix.strip_suffix("-AWQ"))
+        .or_else(|| without_prefix.strip_suffix("-GPTQ"))
+        .unwrap_or(without_prefix);
+
+    without_suffix.to_string()
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -402,12 +431,12 @@ mod tests {
     use ratatui::backend::TestBackend;
 
     fn snapshot_footer(name: &str, props: FooterProps) {
-        let height = footer_height(props).max(1);
+        let height = footer_height(&props).max(1);
         let mut terminal = Terminal::new(TestBackend::new(80, height)).unwrap();
         terminal
             .draw(|f| {
                 let area = Rect::new(0, 0, f.area().width, height);
-                render_footer(area, f.buffer_mut(), props);
+                render_footer(area, f.buffer_mut(), &props);
             })
             .unwrap();
         assert_snapshot!(name, terminal.backend());
@@ -426,6 +455,7 @@ mod tests {
                 context_tokens_used: None,
                 context_tokens_max: None,
                 total_tokens_session: None,
+                current_model: None,
             },
         );
 
@@ -440,6 +470,7 @@ mod tests {
                 context_tokens_used: None,
                 context_tokens_max: None,
                 total_tokens_session: None,
+                current_model: None,
             },
         );
 
@@ -454,6 +485,7 @@ mod tests {
                 context_tokens_used: None,
                 context_tokens_max: None,
                 total_tokens_session: None,
+                current_model: None,
             },
         );
 
@@ -468,6 +500,7 @@ mod tests {
                 context_tokens_used: None,
                 context_tokens_max: None,
                 total_tokens_session: None,
+                current_model: None,
             },
         );
 
@@ -482,6 +515,7 @@ mod tests {
                 context_tokens_used: None,
                 context_tokens_max: None,
                 total_tokens_session: None,
+                current_model: None,
             },
         );
 
@@ -496,6 +530,7 @@ mod tests {
                 context_tokens_used: None,
                 context_tokens_max: None,
                 total_tokens_session: None,
+                current_model: None,
             },
         );
 
@@ -510,6 +545,7 @@ mod tests {
                 context_tokens_used: Some(33600),
                 context_tokens_max: Some(120000),
                 total_tokens_session: Some(45000),
+                current_model: Some("/mnt/llm_models/GLM-4.5-Air-AWQ-4bit".to_string()),
             },
         );
     }

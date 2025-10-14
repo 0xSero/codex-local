@@ -2,4 +2,4 @@
 source: tui/src/bottom_pane/footer.rs
 expression: terminal.backend()
 ---
-"  72% context left · ? for shortcuts                                            "
+"  gpt-5-codex · 72% left · 33/120 (33K used, 86K rem, 45K chat) · ? for shortcut"

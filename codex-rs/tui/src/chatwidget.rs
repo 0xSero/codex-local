@@ -1029,6 +1029,10 @@ impl ChatWidget {
 
         // Initialize token display with config values
         instance.set_token_info(None);
+        // Initialize footer model label
+        instance
+            .bottom_pane
+            .set_current_model(instance.config.model.clone());
         instance
     }
 
@@ -1053,7 +1057,7 @@ impl ChatWidget {
         let codex_op_tx =
             spawn_agent_from_existing(conversation, session_configured, app_event_tx.clone());
 
-        Self {
+        let mut instance = Self {
             app_event_tx: app_event_tx.clone(),
             frame_requester: frame_requester.clone(),
             codex_op_tx,
@@ -1097,7 +1101,13 @@ impl ChatWidget {
             session_input_tokens: 0,
             session_output_tokens: 0,
             current_turn_input_tokens: 0,
-        }
+        };
+
+        // Initialize footer model label
+        instance
+            .bottom_pane
+            .set_current_model(instance.config.model.clone());
+        instance
     }
 
     pub fn desired_height(&self, width: u16) -> u16 {
@@ -1966,6 +1976,8 @@ impl ChatWidget {
     pub(crate) fn set_model(&mut self, model: &str) {
         self.session_header.set_model(model);
         self.config.model = model.to_string();
+        self.bottom_pane
+            .set_current_model(self.config.model.clone());
     }
 
     pub(crate) fn add_info_message(&mut self, message: String, hint: Option<String>) {

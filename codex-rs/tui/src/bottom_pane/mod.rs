@@ -72,6 +72,7 @@ pub(crate) struct BottomPane {
     context_tokens_used: Option<u64>,
     context_tokens_max: Option<u64>,
     total_tokens_session: Option<u64>,
+    current_model: Option<String>,
 }
 
 pub(crate) struct BottomPaneParams {
@@ -108,6 +109,7 @@ impl BottomPane {
             context_tokens_used: None,
             context_tokens_max: None,
             total_tokens_session: None,
+            current_model: None,
         }
     }
 
@@ -397,6 +399,12 @@ impl BottomPane {
     /// Update custom prompts available for the slash popup.
     pub(crate) fn set_custom_prompts(&mut self, prompts: Vec<CustomPrompt>) {
         self.composer.set_custom_prompts(prompts);
+        self.request_redraw();
+    }
+
+    pub(crate) fn set_current_model(&mut self, model: String) {
+        self.current_model = Some(model.clone());
+        self.composer.set_current_model(model);
         self.request_redraw();
     }
 

@@ -1,8 +1,10 @@
 ---
 source: tui/src/chatwidget/tests.rs
-expression: visual
+expression: term.backend().vt100().screen().contents()
 ---
-•     -- Indented code block (4 spaces)
+• 💭
+
+      -- Indented code block (4 spaces)
       SELECT *
       FROM "users"
       WHERE "email" LIKE '%@example.com';

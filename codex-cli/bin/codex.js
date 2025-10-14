@@ -62,7 +62,42 @@ if (!targetTriple) {
 const vendorRoot = path.join(__dirname, "..", "vendor");
 const archRoot = path.join(vendorRoot, targetTriple);
 const codexBinaryName = process.platform === "win32" ? "codex.exe" : "codex";
-const binaryPath = path.join(archRoot, "codex", codexBinaryName);
+
+// Prefer a freshly built local Rust binary when available.
+// Priority order:
+//   1. repo-local release: ../../codex-rs/target/release/codex-local
+//   2. repo-local debug:   ../../codex-rs/target/debug/codex-local
+//   3. user install:       ~/.local/bin/codex-local (POSIX)
+//   4. bundled vendor binary (fallback)
+function findPreferredBinary() {
+  const repoRoot = path.join(__dirname, "..", "..");
+  const exe = process.platform === "win32" ? "codex-local.exe" : "codex-local";
+
+  const candidates = [
+    path.join(repoRoot, "codex-rs", "target", "release", exe),
+    path.join(repoRoot, "codex-rs", "target", "debug", exe),
+  ];
+
+  if (process.platform !== "win32") {
+    const home = process.env.HOME || process.env.USERPROFILE || "";
+    if (home) {
+      candidates.push(path.join(home, ".local", "bin", "codex-local"));
+    }
+  }
+
+  for (const p of candidates) {
+    try {
+      if (existsSync(p)) return p;
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // Fallback to the bundled vendor binary (original behavior)
+  return path.join(archRoot, "codex", codexBinaryName);
+}
+
+const binaryPath = findPreferredBinary();
 
 // Use an asynchronous spawn instead of spawnSync so that Node is able to
 // respond to signals (e.g. Ctrl-C / SIGINT) while the native binary is

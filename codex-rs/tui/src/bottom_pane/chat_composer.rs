@@ -15,6 +15,7 @@ use ratatui::widgets::Block;
 use ratatui::widgets::StatefulWidgetRef;
 use ratatui::widgets::WidgetRef;
 
+use super::FooterSubagentInfo;
 use super::chat_composer_history::ChatComposerHistory;
 use super::command_popup::CommandItem;
 use super::command_popup::CommandPopup;
@@ -113,6 +114,7 @@ pub(crate) struct ChatComposer {
     context_tokens_max: Option<u64>,
     total_tokens_session: Option<u64>,
     current_model: Option<String>,
+    active_subagent: Option<FooterSubagentInfo>,
 }
 
 /// Popup state – at most one can be visible at any time.
@@ -160,6 +162,7 @@ impl ChatComposer {
             context_tokens_max: None,
             total_tokens_session: None,
             current_model: None,
+            active_subagent: None,
         };
         // Apply configuration via the setter to keep side-effects centralized.
         this.set_disable_paste_burst(disable_paste_burst);
@@ -1353,6 +1356,7 @@ impl ChatComposer {
             context_tokens_max: self.context_tokens_max,
             total_tokens_session: self.total_tokens_session,
             current_model: self.current_model.clone(),
+            active_subagent: self.active_subagent.clone(),
         }
     }
 
@@ -1498,6 +1502,15 @@ impl ChatComposer {
         self.context_tokens_used = used;
         self.context_tokens_max = max;
         self.total_tokens_session = total_session;
+    }
+
+    pub(crate) fn set_active_subagent(&mut self, info: Option<FooterSubagentInfo>) -> bool {
+        if self.active_subagent != info {
+            self.active_subagent = info;
+            true
+        } else {
+            false
+        }
     }
 
     pub(crate) fn set_current_model(&mut self, model: String) {

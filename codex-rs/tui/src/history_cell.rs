@@ -32,6 +32,9 @@ use codex_core::protocol_config_types::ReasoningEffort as ReasoningEffortConfig;
 use codex_protocol::plan_tool::PlanItemArg;
 use codex_protocol::plan_tool::StepStatus;
 use codex_protocol::plan_tool::UpdatePlanArgs;
+use codex_protocol::protocol::AgentCompletedEvent;
+use codex_protocol::protocol::AgentProgressEvent;
+use codex_protocol::protocol::AgentSpawnedEvent;
 use image::DynamicImage;
 use image::ImageReader;
 use mcp_types::EmbeddedResourceResource;
@@ -160,6 +163,11 @@ impl ReasoningSummaryCell {
     }
 
     fn lines(&self, width: u16) -> Vec<Line<'static>> {
+        // Return empty lines if content is empty
+        if self.content.trim().is_empty() {
+            return Vec::new();
+        }
+
         let mut lines: Vec<Line<'static>> = Vec::new();
         append_markdown(
             &self.content,
@@ -304,6 +312,79 @@ impl HistoryCell for PrefixedWrappedHistoryCell {
     fn desired_height(&self, width: u16) -> u16 {
         self.display_lines(width).len() as u16
     }
+}
+
+#[derive(Debug)]
+pub(crate) struct AgentDecoratedCell {
+    inner: Box<dyn HistoryCell>,
+    first_prefix: Line<'static>,
+    other_prefix: Line<'static>,
+    prefix_width: u16,
+}
+
+impl AgentDecoratedCell {
+    pub(crate) fn new(
+        inner: Box<dyn HistoryCell>,
+        first_prefix: Line<'static>,
+        other_prefix: Line<'static>,
+    ) -> Self {
+        let first_width = prefix_line_width(&first_prefix);
+        let other_width = prefix_line_width(&other_prefix);
+        Self {
+            inner,
+            first_prefix,
+            other_prefix,
+            prefix_width: first_width.max(other_width) as u16,
+        }
+    }
+
+    fn decorate_lines(&self, lines: Vec<Line<'static>>) -> Vec<Line<'static>> {
+        if lines.is_empty() {
+            return vec![self.first_prefix.clone()];
+        }
+
+        lines
+            .into_iter()
+            .enumerate()
+            .map(|(idx, line)| {
+                let prefix = if idx == 0 {
+                    self.first_prefix.clone()
+                } else {
+                    self.other_prefix.clone()
+                };
+                let mut spans = prefix.spans.clone();
+                spans.extend(line.spans);
+                Line::from(spans)
+            })
+            .collect()
+    }
+}
+
+impl HistoryCell for AgentDecoratedCell {
+    fn display_lines(&self, width: u16) -> Vec<Line<'static>> {
+        let inner_width = width.saturating_sub(self.prefix_width);
+        let inner_lines = self.inner.display_lines(inner_width);
+        self.decorate_lines(inner_lines)
+    }
+
+    fn transcript_lines(&self, width: u16) -> Vec<Line<'static>> {
+        let inner_width = width.saturating_sub(self.prefix_width);
+        let inner_lines = self.inner.transcript_lines(inner_width);
+        self.decorate_lines(inner_lines)
+    }
+
+    fn desired_transcript_height(&self, width: u16) -> u16 {
+        let inner_width = width.saturating_sub(self.prefix_width);
+        self.inner.desired_transcript_height(inner_width)
+    }
+
+    fn is_stream_continuation(&self) -> bool {
+        self.inner.is_stream_continuation()
+    }
+}
+
+fn prefix_line_width(prefix: &Line<'static>) -> usize {
+    prefix.spans.iter().map(|span| span.content.width()).sum()
 }
 
 fn truncate_exec_snippet(full_cmd: &str) -> String {
@@ -1182,10 +1263,210 @@ pub(crate) fn new_view_image_tool_call(path: PathBuf, cwd: &Path) -> PlainHistor
     PlainHistoryCell { lines }
 }
 
+/// Render a concise card for an `AgentSpawned` orchestrator event.
+pub(crate) fn new_agent_spawned_event(ev: AgentSpawnedEvent) -> PlainHistoryCell {
+    let title: Line<'static> = vec!["• ".dim(), "Agent Spawned".bold()].into();
+
+    let mut details: Vec<Line<'static>> = Vec::new();
+    let mut second: Vec<Span<'static>> = Vec::new();
+    // id [profile]
+    second.push("id: ".dim());
+    second.push(Span::from(ev.agent_id.clone()));
+    if let Some(profile) = ev.profile {
+        second.push("  ".into());
+        second.push("profile: ".dim());
+        second.push(Span::from(profile));
+    }
+    details.push(second.into());
+
+    if !ev.purpose.trim().is_empty() {
+        details.push(vec!["purpose: ".dim(), ev.purpose.into()].into());
+    }
+
+    let lines = std::iter::once(title)
+        .chain(prefix_lines(details, "  └ ".dim(), "    ".into()))
+        .collect();
+    PlainHistoryCell::new(lines)
+}
+
+pub(crate) struct AgentCardView<'a> {
+    pub agent_id: &'a str,
+    pub profile: Option<&'a str>,
+    pub purpose: &'a str,
+    pub status: Option<bool>,
+    pub summary: Option<&'a str>,
+    pub context_percent: Option<u8>,
+    pub transcript: &'a [String],
+}
+
+pub(crate) type AgentOverviewEntry = (
+    String,
+    Option<String>,
+    String,
+    Option<bool>,
+    Option<String>,
+    Option<u8>,
+);
+
+/// Render a progress line for an agent.
+pub(crate) fn new_agent_progress_event(view: AgentCardView<'_>) -> PlainHistoryCell {
+    build_agent_card(view, 6)
+}
+
+pub(crate) fn new_agent_detail_card(view: AgentCardView<'_>) -> PlainHistoryCell {
+    build_agent_card(view, 50)
+}
+
+fn build_agent_card(view: AgentCardView<'_>, max_transcript_lines: usize) -> PlainHistoryCell {
+    let mut lines: Vec<Line<'static>> = Vec::new();
+
+    let mut header_spans = vec![
+        "╭─ ".magenta(),
+        format!("Agent {}", view.agent_id).magenta().bold(),
+    ];
+    if let Some(profile) = view.profile {
+        header_spans.push(format!(" [{profile}]").magenta());
+    }
+    lines.push(header_spans.into());
+
+    lines.push(vec!["│ ".magenta(), format!("purpose: {}", view.purpose).dim()].into());
+
+    match view.status {
+        Some(true) => {
+            lines.push(vec!["│ ".magenta(), "status: completed".green()].into());
+        }
+        Some(false) => {
+            lines.push(vec!["│ ".magenta(), "status: failed".red()].into());
+        }
+        None => {
+            lines.push(vec!["│ ".magenta(), "status: in progress".dim()].into());
+        }
+    }
+
+    if let Some(summary) = view.summary.filter(|s| !s.trim().is_empty()) {
+        lines.push(vec!["│ ".magenta(), format!("summary: {summary}").dim()].into());
+    }
+
+    if let Some(pct) = view.context_percent {
+        lines.push(vec!["│ ".magenta(), format!("context left: {pct}%").dim()].into());
+    }
+
+    if !view.transcript.is_empty() {
+        lines.push(vec!["│ ".magenta(), "activity:".dim()].into());
+        let take_count = view.transcript.len().min(max_transcript_lines);
+        let start_index = view.transcript.len().saturating_sub(take_count);
+        for entry in &view.transcript[start_index..] {
+            for line in entry.lines() {
+                let trimmed = line.trim_end();
+                if trimmed.is_empty() {
+                    continue;
+                }
+                lines.push(vec!["│ ".magenta(), trimmed.to_string().into()].into());
+            }
+        }
+    } else {
+        lines.push(vec!["│ ".magenta(), "activity: (no output yet)".dim()].into());
+    }
+
+    lines.push(vec!["╰".magenta(), "".into()].into());
+    PlainHistoryCell::new(lines)
+}
+
+pub(crate) fn new_agent_progress_fallback(ev: AgentProgressEvent) -> PlainHistoryCell {
+    let lines: Vec<Line<'static>> = vec![
+        vec!["• ".dim(), "Agent Progress".bold()].into(),
+        vec![
+            "  └ ".dim(),
+            format!("{}: {}", ev.agent_id, ev.message).into(),
+        ]
+        .into(),
+    ];
+    PlainHistoryCell::new(lines)
+}
+
+/// Render a completion summary for an agent.
+pub(crate) fn new_agent_completed_event(ev: AgentCompletedEvent) -> PlainHistoryCell {
+    let status = if ev.success {
+        "✓ Completed".green().bold()
+    } else {
+        "✗ Failed".red().bold()
+    };
+    let title: Line<'static> = vec!["• ".dim(), status].into();
+    let body: Vec<Line<'static>> = vec![
+        vec!["agent: ".dim(), ev.agent_id.into()].into(),
+        vec!["summary: ".dim(), ev.summary.into()].into(),
+    ];
+    let lines = std::iter::once(title)
+        .chain(prefix_lines(body, "  └ ".dim(), "    ".into()))
+        .collect();
+    PlainHistoryCell::new(lines)
+}
+
+/// Render a compact overview card of all agents with status.
+pub(crate) fn new_agents_overview(mut agents: Vec<AgentOverviewEntry>) -> PlainHistoryCell {
+    // Sort for stable output by agent_id
+    agents.sort_by(|a, b| a.0.cmp(&b.0));
+
+    let mut lines: Vec<Line<'static>> = Vec::new();
+    lines.push(vec!["• ".dim(), "Agents Overview".bold()].into());
+
+    if agents.is_empty() {
+        lines.push(Line::from("  └ (no agents)".dim()));
+        return PlainHistoryCell::new(lines);
+    }
+
+    let mut body: Vec<Line<'static>> = Vec::new();
+    for (id, profile, purpose, status, summary, context_percent) in agents.into_iter() {
+        let mut line: Vec<Span<'static>> = Vec::new();
+        line.push(Span::from(id.clone()));
+        if let Some(p) = profile {
+            line.push(" [".dim());
+            line.push(Span::from(p));
+            line.push("]".dim());
+        }
+        if let Some(done) = status {
+            line.push(" — ".into());
+            if done {
+                line.push("✓".green());
+            } else {
+                line.push("✗".red());
+            }
+        }
+        if let Some(pct) = context_percent {
+            line.push(" · ".dim());
+            line.push(format!("{pct}% ctx left").dim());
+        }
+        body.push(line.into());
+        if !purpose.trim().is_empty() {
+            body.push(vec!["    • ".dim(), purpose.into()].into());
+        }
+        if let Some(s) = summary.filter(|s| !s.trim().is_empty()) {
+            body.push(vec!["    → ".dim(), s.dim()].into());
+        }
+    }
+
+    let lines = lines
+        .into_iter()
+        .chain(prefix_lines(body, "  └ ".dim(), "    ".into()))
+        .collect();
+    PlainHistoryCell::new(lines)
+}
+
 pub(crate) fn new_reasoning_summary_block(
     full_reasoning_buffer: String,
     config: &Config,
 ) -> Box<dyn HistoryCell> {
+    // Check if reasoning buffer is empty after trimming whitespace
+    if full_reasoning_buffer.trim().is_empty() {
+        // Return a minimal empty cell that won't render anything visible
+        return Box::new(ReasoningSummaryCell::new(
+            "".to_string(),
+            "".to_string(),
+            config.into(),
+            true,
+        ));
+    }
+
     // Apply XML thinking block formatting
     let formatted_buffer = format_reasoning_content(&full_reasoning_buffer);
 

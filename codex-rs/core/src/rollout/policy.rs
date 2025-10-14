@@ -73,6 +73,7 @@ pub(crate) fn should_persist_event_msg(ev: &EventMsg) -> bool {
         | EventMsg::AgentProgress(_)
         | EventMsg::AgentCompleted(_)
         | EventMsg::AgentSwitched(_)
+        | EventMsg::AgentEvent(_)
         | EventMsg::ShutdownComplete
         | EventMsg::ViewImageToolCall(_)
         | EventMsg::ConversationPath(_) => false,

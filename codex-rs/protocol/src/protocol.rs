@@ -56,6 +56,12 @@ pub enum Op {
     /// This server sends [`EventMsg::TurnAborted`] in response.
     Interrupt,
 
+    /// Abort a specific child agent.
+    InterruptAgent {
+        /// Identifier of the child agent to interrupt.
+        agent_id: String,
+    },
+
     /// Input from the user
     UserInput {
         /// User input items, see `InputItem`
@@ -408,7 +414,7 @@ pub enum InputItem {
 }
 
 /// Event Queue Entry - events from agent
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, TS)]
 pub struct Event {
     /// Submission `id` that this event is correlated with.
     pub id: String,
@@ -512,6 +518,9 @@ pub enum EventMsg {
 
     /// Notification that a child agent has been spawned.
     AgentSpawned(AgentSpawnedEvent),
+
+    /// Event emitted by a spawned agent, tagged with its identifier.
+    AgentEvent(AgentEvent),
 
     /// Progress update from a specific agent.
     AgentProgress(AgentProgressEvent),
@@ -1376,6 +1385,16 @@ pub struct AgentSpawnedEvent {
     pub profile: Option<String>,
     /// Human-readable purpose/description of this agent's task.
     pub purpose: String,
+}
+
+/// Event emitted by a child agent.
+#[derive(Debug, Clone, Deserialize, Serialize, TS)]
+pub struct AgentEvent {
+    /// Identifier for the agent that produced this event.
+    pub agent_id: String,
+    /// Underlying event from the agent.
+    #[ts(type = "Event")]
+    pub event: Box<Event>,
 }
 
 /// Progress update from a specific agent.

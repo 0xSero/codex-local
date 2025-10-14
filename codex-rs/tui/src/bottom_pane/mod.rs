@@ -24,6 +24,7 @@ mod command_popup;
 pub mod custom_prompt_view;
 mod file_search_popup;
 mod footer;
+pub(crate) use footer::FooterSubagentInfo;
 mod list_selection_view;
 mod prompt_args;
 pub(crate) use list_selection_view::SelectionViewParams;
@@ -142,6 +143,12 @@ impl BottomPane {
         // Account for bottom padding rows. Top spacing is handled in layout().
         base.saturating_add(Self::BOTTOM_PAD_LINES)
             .saturating_add(top_margin)
+    }
+
+    pub(crate) fn set_active_subagent(&mut self, info: Option<FooterSubagentInfo>) {
+        if self.composer.set_active_subagent(info) {
+            self.request_redraw();
+        }
     }
 
     fn layout(&self, area: Rect) -> [Rect; 2] {

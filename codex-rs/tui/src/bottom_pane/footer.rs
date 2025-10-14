@@ -5,6 +5,8 @@ use crate::ui_consts::FOOTER_INDENT_COLS;
 use crossterm::event::KeyCode;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
+use ratatui::style::Color;
+use ratatui::style::Style;
 use ratatui::style::Stylize;
 use ratatui::text::Line;
 use ratatui::text::Span;
@@ -22,6 +24,15 @@ pub(crate) struct FooterProps {
     pub(crate) context_tokens_max: Option<u64>,
     pub(crate) total_tokens_session: Option<u64>,
     pub(crate) current_model: Option<String>,
+    pub(crate) active_subagent: Option<FooterSubagentInfo>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct FooterSubagentInfo {
+    pub(crate) label: String,
+    pub(crate) status: Option<String>,
+    pub(crate) context_percent: Option<u8>,
+    pub(crate) color: Color,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -247,19 +258,45 @@ fn context_window_line(props: &FooterProps) -> Line<'static> {
             format!("{percent}% context left")
         };
 
-    // Prepend cleaned model name when available
-    if let Some(model) = &props.current_model {
+    let mut spans: Vec<Span<'static>> = if let Some(model) = &props.current_model {
         let cleaned_model = clean_model_name(model);
-        Line::from(vec![
+        vec![
             Span::from(cleaned_model).dim(),
             " ".into(),
             "·".dim(),
             " ".into(),
             Span::from(text).dim(),
-        ])
+        ]
     } else {
-        Line::from(vec![Span::from(text).dim()])
+        vec![Span::from(text).dim()]
+    };
+
+    if let Some(info) = &props.active_subagent {
+        spans.extend(subagent_footer_spans(info));
     }
+
+    Line::from(spans)
+}
+
+fn subagent_footer_spans(info: &FooterSubagentInfo) -> Vec<Span<'static>> {
+    let mut spans: Vec<Span<'static>> = vec![" ".into(), "·".dim(), " ".into()];
+    let bullet_style = Style::default().fg(info.color);
+    spans.push(Span::styled("●", bullet_style));
+    spans.push(" ".into());
+    spans.push(info.label.clone().into());
+    if let Some(percent) = info.context_percent {
+        spans.push(" ".into());
+        spans.push(format!("({percent}% ctxt)").dim());
+    }
+    if let Some(status) = &info.status
+        && !status.is_empty()
+    {
+        spans.push(" ".into());
+        spans.push("—".dim());
+        spans.push(" ".into());
+        spans.push(status.clone().dim());
+    }
+    spans
 }
 
 /// Clean up model name for display by stripping path prefixes and suffixes
@@ -456,6 +493,7 @@ mod tests {
                 context_tokens_max: None,
                 total_tokens_session: None,
                 current_model: None,
+                active_subagent: None,
             },
         );
 
@@ -471,6 +509,7 @@ mod tests {
                 context_tokens_max: None,
                 total_tokens_session: None,
                 current_model: None,
+                active_subagent: None,
             },
         );
 
@@ -486,6 +525,7 @@ mod tests {
                 context_tokens_max: None,
                 total_tokens_session: None,
                 current_model: None,
+                active_subagent: None,
             },
         );
 
@@ -501,6 +541,7 @@ mod tests {
                 context_tokens_max: None,
                 total_tokens_session: None,
                 current_model: None,
+                active_subagent: None,
             },
         );
 
@@ -516,6 +557,7 @@ mod tests {
                 context_tokens_max: None,
                 total_tokens_session: None,
                 current_model: None,
+                active_subagent: None,
             },
         );
 
@@ -531,6 +573,7 @@ mod tests {
                 context_tokens_max: None,
                 total_tokens_session: None,
                 current_model: None,
+                active_subagent: None,
             },
         );
 
@@ -546,6 +589,7 @@ mod tests {
                 context_tokens_max: Some(120000),
                 total_tokens_session: Some(45000),
                 current_model: Some("/mnt/llm_models/GLM-4.5-Air-AWQ-4bit".to_string()),
+                active_subagent: None,
             },
         );
     }

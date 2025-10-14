@@ -1,10 +1,12 @@
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 
 use crate::AuthManager;
+use crate::CodexConversation;
 use crate::ConversationManager;
 use crate::client_common::REVIEW_PROMPT;
 use crate::event_mapping::map_response_item_to_event_messages;
@@ -247,6 +249,7 @@ pub(crate) struct Session {
     state: Mutex<SessionState>,
     pub(crate) active_turn: Mutex<Option<ActiveTurn>>,
     pub(crate) services: SessionServices,
+    child_agents: Mutex<HashMap<String, Arc<CodexConversation>>>,
     next_internal_sub_id: AtomicU64,
 }
 
@@ -491,6 +494,7 @@ impl Session {
             state: Mutex::new(state),
             active_turn: Mutex::new(None),
             services,
+            child_agents: Mutex::new(HashMap::new()),
             next_internal_sub_id: AtomicU64::new(0),
         });
 
@@ -1095,10 +1099,12 @@ impl Session {
 
     pub async fn interrupt_task(self: &Arc<Self>) {
         info!("interrupt received: abort current task, if any");
+        self.cancel_all_child_agents().await;
         self.abort_all_tasks(TurnAbortReason::Interrupted).await;
     }
 
     fn interrupt_task_sync(&self) {
+        self.clear_child_agents_sync();
         if let Ok(mut active) = self.active_turn.try_lock()
             && let Some(at) = active.as_mut()
         {
@@ -1122,6 +1128,49 @@ impl Session {
     fn show_raw_agent_reasoning(&self) -> bool {
         self.services.show_raw_agent_reasoning
     }
+
+    pub async fn register_child_agent(
+        self: &Arc<Self>,
+        agent_id: String,
+        conversation: Arc<CodexConversation>,
+    ) {
+        let mut agents = self.child_agents.lock().await;
+        agents.insert(agent_id, conversation);
+    }
+
+    pub async fn unregister_child_agent(self: &Arc<Self>, agent_id: &str) {
+        let mut agents = self.child_agents.lock().await;
+        agents.remove(agent_id);
+    }
+
+    pub async fn cancel_child_agent(self: &Arc<Self>, agent_id: &str) -> bool {
+        let conversation = {
+            let agents = self.child_agents.lock().await;
+            agents.get(agent_id).cloned()
+        };
+        if let Some(conversation) = conversation {
+            let _ = conversation.submit(Op::Interrupt).await;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub async fn cancel_all_child_agents(self: &Arc<Self>) {
+        let conversations: Vec<Arc<CodexConversation>> = {
+            let agents = self.child_agents.lock().await;
+            agents.values().cloned().collect()
+        };
+        for conversation in conversations {
+            let _ = conversation.submit(Op::Interrupt).await;
+        }
+    }
+
+    fn clear_child_agents_sync(&self) {
+        if let Ok(mut agents) = self.child_agents.try_lock() {
+            agents.clear();
+        }
+    }
 }
 
 impl Drop for Session {
@@ -1144,6 +1193,11 @@ async fn submission_loop(
         match sub.op {
             Op::Interrupt => {
                 sess.interrupt_task().await;
+            }
+            Op::InterruptAgent { agent_id } => {
+                if !sess.cancel_child_agent(&agent_id).await {
+                    warn!(%agent_id, "requested interrupt for unknown child agent");
+                }
             }
             Op::OverrideTurnContext {
                 cwd,
@@ -2798,7 +2852,8 @@ mod tests {
             conversation_manager: ConversationManager::new(
                 AuthManager::new(codex_home.path().to_path_buf(), true).into(),
                 SessionSource::default(),
-            ).into(),
+            )
+            .into(),
             config: config.clone(),
         };
         let session = Session {
@@ -2807,6 +2862,7 @@ mod tests {
             state: Mutex::new(SessionState::new()),
             active_turn: Mutex::new(None),
             services,
+            child_agents: Mutex::new(HashMap::new()),
             next_internal_sub_id: AtomicU64::new(0),
         };
         (session, turn_context)
@@ -2878,7 +2934,8 @@ mod tests {
             conversation_manager: ConversationManager::new(
                 AuthManager::new(codex_home.path().to_path_buf(), true).into(),
                 SessionSource::default(),
-            ).into(),
+            )
+            .into(),
             config: config.clone(),
         };
         let session = Arc::new(Session {
@@ -2887,6 +2944,7 @@ mod tests {
             state: Mutex::new(SessionState::new()),
             active_turn: Mutex::new(None),
             services,
+            child_agents: Mutex::new(HashMap::new()),
             next_internal_sub_id: AtomicU64::new(0),
         });
         (session, turn_context, rx_event)

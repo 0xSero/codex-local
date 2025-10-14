@@ -35,6 +35,7 @@ pub enum SlashCommand {
     Think,
     Orchestrator,
     Profiles,
+    Agents,
     #[cfg(debug_assertions)]
     TestApproval,
 }
@@ -66,6 +67,7 @@ impl SlashCommand {
             SlashCommand::Think => "toggle XML thinking block rendering",
             SlashCommand::Orchestrator => "toggle multi-agent orchestrator mode",
             SlashCommand::Profiles => "list and manage configuration profiles",
+            SlashCommand::Agents => "show orchestrator agents overview",
             #[cfg(debug_assertions)]
             SlashCommand::TestApproval => "test approval request",
         }
@@ -102,7 +104,8 @@ impl SlashCommand {
             | SlashCommand::CompactSettings
             | SlashCommand::Think
             | SlashCommand::Orchestrator
-            | SlashCommand::Profiles => true,
+            | SlashCommand::Profiles
+            | SlashCommand::Agents => true,
 
             #[cfg(debug_assertions)]
             SlashCommand::TestApproval => true,

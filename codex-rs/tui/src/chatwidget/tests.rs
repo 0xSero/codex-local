@@ -292,6 +292,9 @@ fn make_chatwidget_manual() -> (
         session_input_tokens: 0,
         session_output_tokens: 0,
         current_turn_input_tokens: 0,
+        agents: HashMap::new(),
+        subagent_states: HashMap::new(),
+        active_subagent: None,
     };
     (widget, rx, op_rx)
 }
@@ -1281,6 +1284,15 @@ async fn binary_size_transcript_snapshot() {
     }
     while lines.last().is_some_and(std::string::String::is_empty) {
         lines.pop();
+    }
+    for line in &mut lines {
+        if let Some(pos) = line.find("Worked for ") {
+            let start = pos + "Worked for ".len();
+            if let Some(rel_end) = line[start..].find('s') {
+                let end = start + rel_end + 1;
+                line.replace_range(start..end, "<duration>");
+            }
+        }
     }
     // Consider content only after the last session banner marker. Skip the transient
     // 'thinking' header if present, and start from the first non-empty content line

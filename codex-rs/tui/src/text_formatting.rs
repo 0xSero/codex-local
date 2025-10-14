@@ -50,10 +50,20 @@ pub(crate) fn format_xml_thinking_blocks(text: &str) -> String {
                         let closing_tag = format!("</{tag_name}>");
                         if let Some(closing_pos) = text[pos..].find(&closing_tag) {
                             let abs_closing_pos = pos + closing_pos;
-                            let block_content = text[pos..abs_closing_pos].trim();
+                            // Sanitize the content inside the thinking block to avoid
+                            // accidentally rendering tool call markup or other
+                            // implementation details that the model may have leaked
+                            // into <think>…</think>.
+                            let raw_block_content = &text[pos..abs_closing_pos];
+                            let sanitized = sanitize_thinking_content(raw_block_content);
+                            let block_content = sanitized.trim();
 
                             // Only render if there's actual content
-                            if !block_content.is_empty() {
+                            // Check for non-whitespace content after sanitization
+                            // Also ensure we have at least some meaningful characters
+                            if !block_content.is_empty()
+                                && !block_content.chars().all(|c| c.is_whitespace())
+                                && block_content.len() > 0 {
                                 // Render the thinking block with proper borders
                                 result.push('\n');
                                 result.push_str("╭─ 💭 Thinking ");
@@ -101,6 +111,76 @@ pub(crate) fn format_xml_thinking_blocks(text: &str) -> String {
     result
 }
 
+/// Remove any leaked tool-call markup from a <think>…</think> block.
+///
+/// Some models occasionally emit <tool_call> (or related) XML tags inside the
+/// thinking block. These should never be shown as part of the reasoning UI.
+/// This helper strips full <tool_call>…</tool_call> sections when present and
+/// also removes stray single‑line tags like <arg_key>, <arg_value>,
+/// <function_call>, etc. The goal is to keep only the natural language
+/// reasoning text.
+fn sanitize_thinking_content(input: &str) -> String {
+    let mut out = String::new();
+
+    // First, strip balanced <tool_call>…</tool_call> regions.
+    let mut i = 0;
+    while i < input.len() {
+        if let Some(start_rel) = input[i..].find("<tool_call") {
+            let start = i + start_rel;
+            // Push any text before the tag
+            out.push_str(&input[i..start]);
+            // Skip until the closing </tool_call>
+            if let Some(end_rel) = input[start..].find("</tool_call>") {
+                i = start + end_rel + "</tool_call>".len();
+                continue;
+            } else {
+                // No closing tag: drop the rest (better than leaking markup)
+                return out;
+            }
+        } else {
+            // No more tags
+            out.push_str(&input[i..]);
+            break;
+        }
+    }
+
+    // Then remove common stray tool‑call related single-line tags.
+    // Operate line-by-line to avoid breaking normal prose.
+    let mut cleaned = String::new();
+    for line in out.lines() {
+        let trimmed = line.trim();
+        let is_tool_tag_line = trimmed.starts_with("<arg_key>")
+            || trimmed.starts_with("<arg_value>")
+            || trimmed.starts_with("</arg_key>")
+            || trimmed.starts_with("</arg_value>")
+            || trimmed.starts_with("</tool_call>")
+            || trimmed.starts_with("<function_call>")
+            || trimmed.starts_with("</function_call>");
+
+        if is_tool_tag_line {
+            continue;
+        }
+
+        // Some models prefix the first line with a bare tool name like "shell"
+        // when leaking a tool call into <think>. If the line is a single word
+        // and looks like a known tool name, omit it.
+        let looks_like_tool_stub = {
+            let w = trimmed;
+            matches!(w, "shell" | "local_shell" | "unified_exec") && !w.contains(' ')
+        };
+        if looks_like_tool_stub {
+            continue;
+        }
+
+        if !cleaned.is_empty() {
+            cleaned.push('\n');
+        }
+        cleaned.push_str(line);
+    }
+
+    cleaned
+}
+
 /// Format text that might contain XML thinking blocks or reasoning content
 /// This is a convenience wrapper that tries XML formatting first
 pub(crate) fn format_reasoning_content(text: &str) -> String {
@@ -113,12 +193,8 @@ pub(crate) fn format_reasoning_content(text: &str) -> String {
     {
         format_xml_thinking_blocks(text)
     } else {
-        // No XML tags, return as-is but maybe with a subtle indicator
-        if text.trim().len() > 20 {
-            format!("💭 {text}")
-        } else {
-            text.to_string()
-        }
+        // No XML tags – return as-is.
+        text.to_string()
     }
 }
 

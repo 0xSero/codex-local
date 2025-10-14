@@ -1095,14 +1095,16 @@ impl Config {
             .model_context_window
             .or(config_profile.model_context_window)
             .or_else(|| openai_model_info.as_ref().map(|info| info.context_window));
-        let model_max_output_tokens = cfg.model_max_output_tokens
+        let model_max_output_tokens = cfg
+            .model_max_output_tokens
             .or(config_profile.model_max_output_tokens)
             .or_else(|| {
                 openai_model_info
                     .as_ref()
                     .map(|info| info.max_output_tokens)
             });
-        let model_auto_compact_token_limit = cfg.model_auto_compact_token_limit
+        let model_auto_compact_token_limit = cfg
+            .model_auto_compact_token_limit
             .or(config_profile.model_auto_compact_token_limit)
             .or_else(|| {
                 openai_model_info
@@ -2149,6 +2151,8 @@ model_verbosity = "high"
                 disable_paste_burst: false,
                 tui_notifications: Default::default(),
                 otel: OtelConfig::default(),
+                active_orchestrator_profile: None,
+                active_agent_profiles: Vec::new(),
             },
             o3_profile_config
         );
@@ -2212,6 +2216,8 @@ model_verbosity = "high"
             disable_paste_burst: false,
             tui_notifications: Default::default(),
             otel: OtelConfig::default(),
+            active_orchestrator_profile: None,
+            active_agent_profiles: Vec::new(),
         };
 
         assert_eq!(expected_gpt3_profile_config, gpt3_profile_config);
@@ -2290,6 +2296,8 @@ model_verbosity = "high"
             disable_paste_burst: false,
             tui_notifications: Default::default(),
             otel: OtelConfig::default(),
+            active_orchestrator_profile: None,
+            active_agent_profiles: Vec::new(),
         };
 
         assert_eq!(expected_zdr_profile_config, zdr_profile_config);
@@ -2354,6 +2362,8 @@ model_verbosity = "high"
             disable_paste_burst: false,
             tui_notifications: Default::default(),
             otel: OtelConfig::default(),
+            active_orchestrator_profile: None,
+            active_agent_profiles: Vec::new(),
         };
 
         assert_eq!(expected_gpt5_profile_config, gpt5_profile_config);

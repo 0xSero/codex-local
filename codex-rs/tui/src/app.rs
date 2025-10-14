@@ -74,6 +74,7 @@ pub(crate) struct App {
     pub(crate) backtrack: crate::app_backtrack::BacktrackState,
 
     // Orchestrator mode (optional - enabled when orchestrator_profile is configured)
+    #[allow(dead_code)]
     pub(crate) orchestrator: Option<Orchestrator>,
 }
 

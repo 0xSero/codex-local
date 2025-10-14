@@ -2795,7 +2795,10 @@ mod tests {
                 turn_context.cwd.clone(),
                 None,
             )),
-            conversation_manager: ConversationManager::default(),
+            conversation_manager: ConversationManager::new(
+                AuthManager::new(codex_home.path().to_path_buf(), true).into(),
+                SessionSource::default(),
+            ).into(),
             config: config.clone(),
         };
         let session = Session {
@@ -2872,7 +2875,10 @@ mod tests {
                 config.cwd.clone(),
                 None,
             )),
-            conversation_manager: ConversationManager::default(),
+            conversation_manager: ConversationManager::new(
+                AuthManager::new(codex_home.path().to_path_buf(), true).into(),
+                SessionSource::default(),
+            ).into(),
             config: config.clone(),
         };
         let session = Arc::new(Session {

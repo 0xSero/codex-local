@@ -974,6 +974,7 @@ mod tests {
             use_streamable_shell_tool: false,
             include_view_image_tool: true,
             experimental_unified_exec_tool: true,
+            include_spawn_agent_tool: false,
         });
         let (tools, _) = build_specs(&config, Some(HashMap::new())).build();
 
@@ -994,6 +995,7 @@ mod tests {
             use_streamable_shell_tool: false,
             include_view_image_tool: true,
             experimental_unified_exec_tool: true,
+            include_spawn_agent_tool: false,
         });
         let (tools, _) = build_specs(&config, Some(HashMap::new())).build();
 
@@ -1016,6 +1018,7 @@ mod tests {
             use_streamable_shell_tool: false,
             include_view_image_tool: false,
             experimental_unified_exec_tool: true,
+            include_spawn_agent_tool: false,
         });
         let (tools, _) = build_specs(&config, None).build();
 
@@ -1037,6 +1040,7 @@ mod tests {
             use_streamable_shell_tool: false,
             include_view_image_tool: false,
             experimental_unified_exec_tool: false,
+            include_spawn_agent_tool: false,
         });
         let (tools, _) = build_specs(&config, None).build();
 
@@ -1069,6 +1073,7 @@ mod tests {
             use_streamable_shell_tool: false,
             include_view_image_tool: true,
             experimental_unified_exec_tool: true,
+            include_spawn_agent_tool: false,
         });
         let (tools, _) = build_specs(
             &config,
@@ -1174,6 +1179,7 @@ mod tests {
             use_streamable_shell_tool: false,
             include_view_image_tool: true,
             experimental_unified_exec_tool: true,
+            include_spawn_agent_tool: false,
         });
 
         // Intentionally construct a map with keys that would sort alphabetically.
@@ -1251,6 +1257,7 @@ mod tests {
             use_streamable_shell_tool: false,
             include_view_image_tool: true,
             experimental_unified_exec_tool: true,
+            include_spawn_agent_tool: false,
         });
 
         let (tools, _) = build_specs(
@@ -1320,6 +1327,7 @@ mod tests {
             use_streamable_shell_tool: false,
             include_view_image_tool: true,
             experimental_unified_exec_tool: true,
+            include_spawn_agent_tool: false,
         });
 
         let (tools, _) = build_specs(
@@ -1384,6 +1392,7 @@ mod tests {
             use_streamable_shell_tool: false,
             include_view_image_tool: true,
             experimental_unified_exec_tool: true,
+            include_spawn_agent_tool: false,
         });
 
         let (tools, _) = build_specs(
@@ -1451,6 +1460,7 @@ mod tests {
             use_streamable_shell_tool: false,
             include_view_image_tool: true,
             experimental_unified_exec_tool: true,
+            include_spawn_agent_tool: false,
         });
 
         let (tools, _) = build_specs(
@@ -1530,6 +1540,7 @@ mod tests {
             use_streamable_shell_tool: false,
             include_view_image_tool: true,
             experimental_unified_exec_tool: true,
+            include_spawn_agent_tool: false,
         });
         let (tools, _) = build_specs(
             &config,

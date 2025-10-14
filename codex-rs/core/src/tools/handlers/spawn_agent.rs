@@ -142,7 +142,7 @@ impl ToolHandler for SpawnAgentHandler {
                 ))
             })?;
 
-        let checklist_str = if args.checklist.is_empty() {
+        let _checklist_str = if args.checklist.is_empty() {
             String::new()
         } else {
             format!(

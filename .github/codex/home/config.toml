@@ -1,3 +1,27 @@
 model = "gpt-5"
 
-# Consider setting [mcp_servers] here!
+# MCP servers configured for Codex CLI (STDIO launch)
+[mcp_servers.context7]
+command = "npx"
+args = ["-y", "@upstash/context7-mcp"]
+# Optional environment variables for the server
+[mcp_servers.context7.env]
+DEFAULT_MINIMUM_TOKENS = ""
+
+[mcp_servers.memory]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-memory"]
+
+# Playwright MCP (disabled by default, enable when needed)
+[mcp_servers.playwright]
+command = "npx"
+args = ["-y", "@playwright/mcp@latest", "--browser=", "--headless=", "--viewport-size="]
+enabled = false
+
+[mcp_servers.puppeteer]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-puppeteer"]
+
+[mcp_servers.supabase]
+command = "npx"
+args = ["-y", "@supabase/mcp-server-supabase@0.5.5", "--access-token", "YOUR_SUPABASE_ACCESS_TOKEN_HERE"]

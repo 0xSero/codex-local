@@ -44,17 +44,29 @@ pub fn validate_checklist(spec: &TaskSpec) -> ValidationResult {
 /// Aggregates results from multiple child agents.
 pub struct ResultAggregator {
     results: Vec<(String, ValidationResult)>,
+    outputs: Vec<AgentOutputRecord>,
 }
 
 impl ResultAggregator {
     pub fn new() -> Self {
         Self {
             results: Vec::new(),
+            outputs: Vec::new(),
         }
     }
 
     pub fn add_result(&mut self, agent_id: String, result: ValidationResult) {
         self.results.push((agent_id, result));
+    }
+
+    /// Adds a subagent output record for synthesis.
+    pub fn add_output(&mut self, output: AgentOutputRecord) {
+        self.outputs.push(output);
+    }
+
+    /// Returns all collected outputs.
+    pub fn outputs(&self) -> &[AgentOutputRecord] {
+        &self.outputs
     }
 
     pub fn summary(&self) -> AggregateSummary {
@@ -100,5 +112,25 @@ impl AggregateSummary {
             return 1.0;
         }
         self.successful_agents as f64 / self.total_agents as f64
+    }
+}
+
+/// Record of a subagent's output for synthesis.
+#[derive(Clone, Debug)]
+pub struct AgentOutputRecord {
+    pub agent_id: String,
+    pub purpose: String,
+    pub truncated_output: String,
+    pub success: bool,
+}
+
+impl AgentOutputRecord {
+    pub fn new(agent_id: String, purpose: String, truncated_output: String, success: bool) -> Self {
+        Self {
+            agent_id,
+            purpose,
+            truncated_output,
+            success,
+        }
     }
 }

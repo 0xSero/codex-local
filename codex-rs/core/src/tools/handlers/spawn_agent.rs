@@ -26,7 +26,7 @@ struct SpawnAgentArgs {
     purpose: String,
     prompt: String,
     #[serde(default)]
-    checklist: Vec<String>,
+    _checklist: Vec<String>,
     #[serde(default)]
     profile: Option<String>,
 }
@@ -97,6 +97,9 @@ impl ToolHandler for SpawnAgentHandler {
                     include_view_image_tool: None,
                     show_raw_agent_reasoning: None,
                     tools_web_search_request: None,
+                    model_reasoning_effort: Some(
+                        codex_protocol::config_types::ReasoningEffort::Low,
+                    ),
                 },
                 parent_config.codex_home.clone(),
             )
@@ -106,8 +109,12 @@ impl ToolHandler for SpawnAgentHandler {
                 ))
             })?
         } else {
-            // Fall back to inheriting the parent config
-            (*session.services.config).clone()
+            // Fall back to inheriting the parent config with low reasoning effort for determinism
+            let mut child_config = (*session.services.config).clone();
+            // Override reasoning effort to low for more deterministic subagent responses
+            child_config.model_reasoning_effort =
+                Some(codex_protocol::config_types::ReasoningEffort::Low);
+            child_config
         };
 
         // Spawn the child conversation
@@ -148,19 +155,34 @@ impl ToolHandler for SpawnAgentHandler {
             .register_child_agent(args.task_id.clone(), child.conversation.clone())
             .await;
 
-        // Create a channel to communicate completion from the monitoring task to the main handler.
-        // This avoids having two consumers of the same event stream (which causes race conditions).
-        let (completion_tx, completion_rx) = tokio::sync::oneshot::channel();
-
-        // Monitor the child conversation and emit UI events in the background.
-        // When complete, send the final result through the completion channel.
+        // Monitor the child conversation and emit UI events.
+        // We also block the tool call until completion so the main agent
+        // waits for the subagent's markdown result.
         let parent_session_for_ui = session.clone();
         let parent_sub_id_for_ui = sub_id.clone();
         let agent_id_for_ui = args.task_id.clone();
         let child_conversation_for_ui = child.conversation.clone();
+
+        // Channel used to signal final outcome back to the tool handler
+        // so we can return a single markdown-formatted result.
+        #[derive(Debug, Clone)]
+        struct SubagentOutcome {
+            success: bool,
+            markdown: String,
+            injected_into_turn: bool,
+        }
+        let (outcome_tx, outcome_rx) = tokio::sync::oneshot::channel::<SubagentOutcome>();
+
         tokio::spawn(async move {
             use std::time::Duration;
             use std::time::Instant;
+
+            // Output truncation: limit subagent output to 5k tokens
+            const OUTPUT_TOKEN_LIMIT: usize = 5000;
+            let mut accumulated_output = String::new();
+            let mut output_token_count = 0usize;
+            let mut truncated = false;
+
             let mut progress_buffer = String::new();
             let mut last_progress_emit = Instant::now();
             let progress_interval = Duration::from_millis(900);
@@ -202,6 +224,30 @@ impl ToolHandler for SpawnAgentHandler {
                         emit_progress("started".to_string()).await;
                     }
                     codex_protocol::protocol::EventMsg::AgentMessageDelta(delta) => {
+                        // Accumulate output with truncation
+                        if !truncated {
+                            let delta_tokens = delta.delta.len().div_ceil(4); // Simple estimation
+                            if output_token_count + delta_tokens <= OUTPUT_TOKEN_LIMIT {
+                                accumulated_output.push_str(&delta.delta);
+                                output_token_count += delta_tokens;
+                            } else {
+                                // Apply truncation
+                                truncated = true;
+                                let remaining_tokens =
+                                    OUTPUT_TOKEN_LIMIT.saturating_sub(output_token_count);
+                                let remaining_chars = remaining_tokens * 4;
+
+                                if remaining_chars > 0 {
+                                    let truncated_delta: String =
+                                        delta.delta.chars().take(remaining_chars).collect();
+                                    accumulated_output.push_str(&truncated_delta);
+                                }
+                                accumulated_output
+                                    .push_str("\n\n[Output truncated at 5k token limit]");
+                                output_token_count = OUTPUT_TOKEN_LIMIT;
+                            }
+                        }
+
                         progress_buffer.push_str(&delta.delta);
                         let should_flush = progress_buffer.contains('\n')
                             || progress_buffer.len() > 500
@@ -225,6 +271,21 @@ impl ToolHandler for SpawnAgentHandler {
                         }
                     }
                     codex_protocol::protocol::EventMsg::AgentMessage(msg) => {
+                        // Accumulate full message with truncation
+                        if !truncated {
+                            let msg_tokens = msg.message.len().div_ceil(4);
+                            if output_token_count + msg_tokens <= OUTPUT_TOKEN_LIMIT {
+                                accumulated_output.push_str(&msg.message);
+                                accumulated_output.push('\n');
+                                output_token_count += msg_tokens;
+                            } else {
+                                truncated = true;
+                                accumulated_output
+                                    .push_str("\n\n[Output truncated at 5k token limit]");
+                                output_token_count = OUTPUT_TOKEN_LIMIT;
+                            }
+                        }
+
                         last_message = Some(msg.message.clone());
                         emit_progress(msg.message).await;
                     }
@@ -254,27 +315,39 @@ impl ToolHandler for SpawnAgentHandler {
                         .await;
                     }
                     codex_protocol::protocol::EventMsg::TokenCount(tc) => {
-                        if let Some(info) = tc.info
-                            && let Some(ctx) = info.model_context_window
-                        {
-                            let pct = info
-                                .last_token_usage
-                                .percent_of_context_window_remaining(ctx);
-                            emit_progress(format!("context left: {pct}%")).await;
+                        if let Some(info) = tc.info {
+                            // Emit context tracking information for orchestrator
+                            if let Some(ctx) = info.model_context_window {
+                                let pct = info
+                                    .last_token_usage
+                                    .percent_of_context_window_remaining(ctx);
+
+                                // Emit progress with context info
+                                emit_progress(format!("context left: {pct}%")).await;
+                            }
                         }
                     }
                     codex_protocol::protocol::EventMsg::TaskComplete(TaskCompleteEvent {
                         last_agent_message,
                     }) => {
-                        let final_message =
+                        // Use accumulated output (truncated) instead of just last message
+                        let final_message = if !accumulated_output.is_empty() {
+                            accumulated_output.clone()
+                        } else {
                             last_agent_message.or(last_message).unwrap_or_else(|| {
                                 "Child agent completed without returning a message.".to_string()
-                            });
-
-                        let summary = format!(
-                            "Child agent '{agent_id_for_ui}' completed successfully.\n\n\
-                             --- Results from child agent ---\n{final_message}\n--- End results ---"
-                        );
+                            })
+                        };
+                        // Compose a concise completion summary event for the UI
+                        let summary_heading = if truncated {
+                            format!(
+                                "### Subagent `{agent_id_for_ui}` ✅ (output truncated to 5k tokens)"
+                            )
+                        } else {
+                            format!("### Subagent `{agent_id_for_ui}` ✅")
+                        };
+                        let summary = format!("{summary_heading}\n\n{final_message}");
+                        let summary_for_event = summary.clone();
 
                         let _ = parent_session_for_ui
                             .send_event(Event {
@@ -283,7 +356,7 @@ impl ToolHandler for SpawnAgentHandler {
                                     codex_protocol::protocol::AgentCompletedEvent {
                                         agent_id: agent_id_for_ui.clone(),
                                         success: true,
-                                        summary,
+                                        summary: summary_for_event,
                                     },
                                 ),
                             })
@@ -293,15 +366,41 @@ impl ToolHandler for SpawnAgentHandler {
                             .unregister_child_agent(&agent_id_for_ui)
                             .await;
 
-                        // Send completion result through channel
-                        let _ = completion_tx.send(Ok(final_message));
+                        // Signal completion back to the tool call with Markdown content
+                        let injected = parent_session_for_ui
+                            .inject_input(vec![InputItem::Text {
+                                text: summary.clone(),
+                            }])
+                            .await
+                            .is_ok();
+
+                        if !injected {
+                            let _ = parent_session_for_ui
+                                .send_event(Event {
+                                    id: parent_sub_id_for_ui.clone(),
+                                    msg: EventMsg::BackgroundEvent(
+                                        codex_protocol::protocol::BackgroundEventEvent {
+                                            message: format!(
+                                                "Subagent {agent_id_for_ui} completed but results could not be injected. Results: {final_message}"
+                                            ),
+                                        },
+                                    ),
+                                })
+                                .await;
+                        }
+
+                        let _ = outcome_tx.send(SubagentOutcome {
+                            success: true,
+                            markdown: summary,
+                            injected_into_turn: injected,
+                        });
+
+                        // Exit monitor loop
                         break;
                     }
                     codex_protocol::protocol::EventMsg::Error(err) => {
-                        let error_message = format!(
-                            "Child agent '{}' encountered an error:\n{}",
-                            agent_id_for_ui, err.message
-                        );
+                        let error_message =
+                            format!("### Subagent `{agent_id_for_ui}` ❌\n\n{}", err.message);
 
                         let _ = parent_session_for_ui
                             .send_event(Event {
@@ -320,8 +419,37 @@ impl ToolHandler for SpawnAgentHandler {
                             .unregister_child_agent(&agent_id_for_ui)
                             .await;
 
-                        // Send error through channel
-                        let _ = completion_tx.send(Err(error_message));
+                        // Signal failure back to the tool call with Markdown content
+                        let injected = parent_session_for_ui
+                            .inject_input(vec![InputItem::Text {
+                                text: error_message.clone(),
+                            }])
+                            .await
+                            .is_ok();
+
+                        if !injected {
+                            let _ = parent_session_for_ui
+                                .send_event(Event {
+                                    id: parent_sub_id_for_ui.clone(),
+                                    msg: EventMsg::BackgroundEvent(
+                                        codex_protocol::protocol::BackgroundEventEvent {
+                                            message: format!(
+                                                "Subagent {} failed: {}",
+                                                agent_id_for_ui, err.message
+                                            ),
+                                        },
+                                    ),
+                                })
+                                .await;
+                        }
+
+                        let _ = outcome_tx.send(SubagentOutcome {
+                            success: false,
+                            markdown: error_message,
+                            injected_into_turn: injected,
+                        });
+
+                        // Exit monitor loop
                         break;
                     }
                     codex_protocol::protocol::EventMsg::TurnAborted(aborted) => {
@@ -337,8 +465,9 @@ impl ToolHandler for SpawnAgentHandler {
                             }
                         };
 
-                        let abort_message =
-                            format!("Child agent '{agent_id_for_ui}' was {reason_text}");
+                        let abort_message = format!(
+                            "### Subagent `{agent_id_for_ui}` ⚠️\n\nThe subagent was {reason_text}."
+                        );
 
                         let _ = parent_session_for_ui
                             .send_event(Event {
@@ -357,8 +486,36 @@ impl ToolHandler for SpawnAgentHandler {
                             .unregister_child_agent(&agent_id_for_ui)
                             .await;
 
-                        // Send abort through channel
-                        let _ = completion_tx.send(Err(abort_message));
+                        // Signal abort back to the tool call with Markdown content
+                        let injected = parent_session_for_ui
+                            .inject_input(vec![InputItem::Text {
+                                text: abort_message.clone(),
+                            }])
+                            .await
+                            .is_ok();
+
+                        if !injected {
+                            let _ = parent_session_for_ui
+                                .send_event(Event {
+                                    id: parent_sub_id_for_ui.clone(),
+                                    msg: EventMsg::BackgroundEvent(
+                                        codex_protocol::protocol::BackgroundEventEvent {
+                                            message: format!(
+                                                "Subagent {agent_id_for_ui} aborted: {reason_text}"
+                                            ),
+                                        },
+                                    ),
+                                })
+                                .await;
+                        }
+
+                        let _ = outcome_tx.send(SubagentOutcome {
+                            success: false,
+                            markdown: abort_message,
+                            injected_into_turn: injected,
+                        });
+
+                        // Exit monitor loop
                         break;
                     }
                     _ => {}
@@ -366,28 +523,28 @@ impl ToolHandler for SpawnAgentHandler {
             }
         });
 
-        // WAIT for child agent to complete via the completion channel.
-        // The background task monitors events and sends the final result.
-        match completion_rx.await {
-            Ok(Ok(final_message)) => {
-                // Child completed successfully - return the final message as tool result.
-                // This gets added to the parent conversation context.
+        // Block until we receive the subagent outcome, then return its
+        // markdown to the model so the main agent can use it directly.
+        match outcome_rx.await {
+            Ok(outcome) => {
+                let payload = serde_json::json!({
+                    "agent_id": args.task_id,
+                    "status": if outcome.success { "completed" } else { "failed" },
+                    "markdown_summary": outcome.markdown,
+                    "injected_into_turn": outcome.injected_into_turn,
+                });
                 Ok(ToolOutput::Function {
-                    content: final_message,
-                    success: Some(true),
+                    content: payload.to_string(),
+                    success: Some(outcome.success),
                 })
             }
-            Ok(Err(error_message)) => {
-                // Child failed - return error
-                Err(FunctionCallError::RespondToModel(error_message))
-            }
-            Err(_) => {
-                // Channel closed unexpectedly (background task panicked?)
-                session.unregister_child_agent(&args.task_id).await;
-                Err(FunctionCallError::RespondToModel(
-                    "Child agent monitoring task failed unexpectedly".to_string(),
-                ))
-            }
+            Err(_recv_err) => Ok(ToolOutput::Function {
+                content: format!(
+                    "## Subagent `{}` did not report a result\n\nThe child agent terminated without a final outcome.",
+                    args.task_id
+                ),
+                success: Some(false),
+            }),
         }
     }
 }

@@ -123,6 +123,7 @@ use codex_protocol::models::FunctionCallOutputPayload;
 use codex_protocol::models::ResponseInputItem;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::InitialHistory;
+use codex_protocol::protocol::TaskCompleteEvent;
 
 pub mod compact;
 use self::compact::build_compacted_history;
@@ -1139,8 +1140,17 @@ impl Session {
     }
 
     pub async fn unregister_child_agent(self: &Arc<Self>, agent_id: &str) {
-        let mut agents = self.child_agents.lock().await;
-        agents.remove(agent_id);
+        let should_emit_completion = {
+            let mut agents = self.child_agents.lock().await;
+            agents.remove(agent_id);
+            agents.is_empty()
+        };
+
+        if should_emit_completion
+            && let Some((sub_id, last_agent_message)) = self.take_pending_task_complete().await
+        {
+            self.emit_task_complete(sub_id, last_agent_message).await;
+        }
     }
 
     pub async fn cancel_child_agent(self: &Arc<Self>, agent_id: &str) -> bool {
@@ -1170,6 +1180,37 @@ impl Session {
         if let Ok(mut agents) = self.child_agents.try_lock() {
             agents.clear();
         }
+    }
+
+    pub(crate) async fn has_child_agents(&self) -> bool {
+        let agents = self.child_agents.lock().await;
+        !agents.is_empty()
+    }
+
+    pub(crate) async fn set_pending_task_complete(
+        &self,
+        sub_id: String,
+        last_agent_message: Option<String>,
+    ) {
+        let mut state = self.state.lock().await;
+        state.set_pending_task_complete(sub_id, last_agent_message);
+    }
+
+    async fn take_pending_task_complete(&self) -> Option<(String, Option<String>)> {
+        let mut state = self.state.lock().await;
+        state.take_pending_task_complete()
+    }
+
+    pub(crate) async fn emit_task_complete(
+        &self,
+        sub_id: String,
+        last_agent_message: Option<String>,
+    ) {
+        let event = Event {
+            id: sub_id,
+            msg: EventMsg::TaskComplete(TaskCompleteEvent { last_agent_message }),
+        };
+        self.send_event(event).await;
     }
 }
 

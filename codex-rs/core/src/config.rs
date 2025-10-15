@@ -974,6 +974,7 @@ pub struct ConfigOverrides {
     pub include_view_image_tool: Option<bool>,
     pub show_raw_agent_reasoning: Option<bool>,
     pub tools_web_search_request: Option<bool>,
+    pub model_reasoning_effort: Option<codex_protocol::config_types::ReasoningEffort>,
 }
 
 impl Config {
@@ -1002,6 +1003,7 @@ impl Config {
             include_view_image_tool,
             show_raw_agent_reasoning,
             tools_web_search_request: override_tools_web_search_request,
+            model_reasoning_effort: override_model_reasoning_effort,
         } = overrides;
 
         let active_profile_name = config_profile_key
@@ -1176,8 +1178,8 @@ impl Config {
                 .show_raw_agent_reasoning
                 .or(show_raw_agent_reasoning)
                 .unwrap_or(false),
-            model_reasoning_effort: config_profile
-                .model_reasoning_effort
+            model_reasoning_effort: override_model_reasoning_effort
+                .or(config_profile.model_reasoning_effort)
                 .or(cfg.model_reasoning_effort),
             model_reasoning_summary: config_profile
                 .model_reasoning_summary

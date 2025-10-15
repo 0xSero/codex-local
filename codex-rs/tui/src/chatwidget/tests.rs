@@ -281,6 +281,7 @@ fn make_chatwidget_manual() -> (
         conversation_id: None,
         frame_requester: FrameRequester::test_dummy(),
         show_welcome_banner: true,
+        auto_continuation_scheduled: false,
         queued_user_messages: VecDeque::new(),
         suppress_session_configured_redraw: false,
         pending_notification: None,

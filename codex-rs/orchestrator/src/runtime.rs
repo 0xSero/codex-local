@@ -17,7 +17,99 @@ use codex_protocol::protocol::Op;
 use codex_protocol::ConversationId;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
+use std::time::Instant;
 use tokio::sync::RwLock;
+use tokio::task::JoinSet;
+
+/// Context usage tracking for a subagent.
+#[derive(Clone, Debug)]
+pub struct ContextUsage {
+    pub tokens_used: u64,
+    pub context_window: Option<u64>,
+    pub last_update: Instant,
+}
+
+impl ContextUsage {
+    pub fn new() -> Self {
+        Self {
+            tokens_used: 0,
+            context_window: None,
+            last_update: Instant::now(),
+        }
+    }
+
+    pub fn usage_percentage(&self) -> Option<u8> {
+        self.context_window.map(|window| {
+            if window == 0 {
+                return 100;
+            }
+            ((self.tokens_used * 100) / window).min(100) as u8
+        })
+    }
+
+    pub fn context_display(&self) -> String {
+        match self.usage_percentage() {
+            Some(pct) => format!(
+                "subagent context = {}/{} ({}%)",
+                self.tokens_used,
+                self.context_window.unwrap_or(0),
+                pct
+            ),
+            None => format!("subagent context = {}", self.tokens_used),
+        }
+    }
+}
+
+impl Default for ContextUsage {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Status of a subagent.
+#[derive(Clone, Debug, PartialEq)]
+pub enum SubagentStatus {
+    Pending,
+    Running,
+    Completed,
+    Failed(String),
+    Timeout,
+}
+
+/// Complete context for a subagent, tracking execution and results.
+#[derive(Clone, Debug)]
+pub struct SubagentContext {
+    pub agent_id: String,
+    pub conversation_id: ConversationId,
+    pub task: TaskSpec,
+    pub status: SubagentStatus,
+    pub context_usage: ContextUsage,
+    pub output_buffer: String,
+    pub start_time: Instant,
+    pub completion_time: Option<Instant>,
+}
+
+impl SubagentContext {
+    pub fn new(agent_id: String, conversation_id: ConversationId, task: TaskSpec) -> Self {
+        Self {
+            agent_id,
+            conversation_id,
+            task,
+            status: SubagentStatus::Pending,
+            context_usage: ContextUsage::new(),
+            output_buffer: String::new(),
+            start_time: Instant::now(),
+            completion_time: None,
+        }
+    }
+
+    pub fn duration(&self) -> Duration {
+        self.completion_time
+            .map(|end| end.duration_since(self.start_time))
+            .unwrap_or_else(|| self.start_time.elapsed())
+    }
+}
 
 /// The main orchestrator that coordinates child agents.
 pub struct Orchestrator {
@@ -35,6 +127,9 @@ pub struct Orchestrator {
     /// Active child agents
     children: Arc<RwLock<HashMap<String, ChildAgent>>>,
 
+    /// Subagent contexts for tracking execution
+    subagent_contexts: Arc<RwLock<HashMap<String, SubagentContext>>>,
+
     /// Event emitter
     event_emitter: EventEmitter,
 
@@ -43,6 +138,9 @@ pub struct Orchestrator {
 
     /// Result aggregator
     result_aggregator: Arc<RwLock<ResultAggregator>>,
+
+    /// Active task join set for parallel execution
+    _active_tasks: Arc<RwLock<JoinSet<Result<AgentOutput, String>>>>,
 }
 
 /// Represents an active child agent.
@@ -53,6 +151,16 @@ struct ChildAgent {
     conversation_id: ConversationId,
     conversation: Arc<CodexConversation>,
     task: TaskSpec,
+}
+
+/// Output from a completed subagent.
+#[derive(Clone, Debug)]
+pub struct AgentOutput {
+    pub agent_id: String,
+    pub task_spec: TaskSpec,
+    pub truncated_output: String,
+    pub completion_time: Duration,
+    pub context_usage: ContextUsage,
 }
 
 impl Orchestrator {
@@ -75,9 +183,11 @@ impl Orchestrator {
             spawner,
             profile_selector,
             children: Arc::new(RwLock::new(HashMap::new())),
+            subagent_contexts: Arc::new(RwLock::new(HashMap::new())),
             event_emitter,
             task_queue: Arc::new(RwLock::new(Vec::new())),
             result_aggregator: Arc::new(RwLock::new(ResultAggregator::new())),
+            _active_tasks: Arc::new(RwLock::new(JoinSet::new())),
         }
     }
 
@@ -196,5 +306,121 @@ impl Orchestrator {
     pub async fn get_summary(&self) -> crate::validation::AggregateSummary {
         let aggregator = self.result_aggregator.read().await;
         aggregator.summary()
+    }
+
+    /// Updates context usage for a subagent.
+    pub async fn update_context_usage(
+        &self,
+        agent_id: &str,
+        tokens_used: u64,
+        context_window: Option<u64>,
+    ) {
+        let mut contexts = self.subagent_contexts.write().await;
+        if let Some(context) = contexts.get_mut(agent_id) {
+            context.context_usage.tokens_used = tokens_used;
+            context.context_usage.context_window = context_window;
+            context.context_usage.last_update = Instant::now();
+        }
+    }
+
+    /// Gets a clone of a subagent context.
+    pub async fn get_subagent_context(&self, agent_id: &str) -> Option<SubagentContext> {
+        let contexts = self.subagent_contexts.read().await;
+        contexts.get(agent_id).cloned()
+    }
+
+    /// Lists all active subagent contexts.
+    pub async fn list_subagent_contexts(&self) -> Vec<SubagentContext> {
+        let contexts = self.subagent_contexts.read().await;
+        contexts.values().cloned().collect()
+    }
+
+    /// Spawns multiple child agents in parallel and waits for all to complete.
+    /// Returns a vector of agent outputs from all completed agents.
+    pub async fn spawn_parallel_agents(
+        &self,
+        tasks: Vec<TaskSpec>,
+        configs: Vec<Config>,
+    ) -> anyhow::Result<Vec<AgentOutput>> {
+        if tasks.len() != configs.len() {
+            anyhow::bail!(
+                "Task count ({}) does not match config count ({})",
+                tasks.len(),
+                configs.len()
+            );
+        }
+
+        // Spawn all agents
+        for (task, config) in tasks.into_iter().zip(configs.into_iter()) {
+            let agent_id = self.spawn_child(task, config).await?;
+
+            // Initialize context tracking
+            let children = self.children.read().await;
+            if let Some(child) = children.get(&agent_id) {
+                let context = SubagentContext::new(
+                    child.agent_id.clone(),
+                    child.conversation_id,
+                    child.task.clone(),
+                );
+                let mut contexts = self.subagent_contexts.write().await;
+                contexts.insert(agent_id.clone(), context);
+            }
+        }
+
+        // Wait for all to complete
+        self.wait_for_all_children().await
+    }
+
+    /// Waits for all active child agents to complete and returns their outputs.
+    pub async fn wait_for_all_children(&self) -> anyhow::Result<Vec<AgentOutput>> {
+        let mut outputs = Vec::new();
+
+        // Poll children until all complete
+        loop {
+            let count = self.active_child_count().await;
+            if count == 0 {
+                break;
+            }
+
+            // Small delay to avoid busy waiting
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+
+        // Collect outputs from completed contexts
+        let contexts = self.subagent_contexts.read().await;
+        for context in contexts.values() {
+            if context.status == SubagentStatus::Completed {
+                outputs.push(AgentOutput {
+                    agent_id: context.agent_id.clone(),
+                    task_spec: context.task.clone(),
+                    truncated_output: context.output_buffer.clone(),
+                    completion_time: context.duration(),
+                    context_usage: context.context_usage.clone(),
+                });
+            }
+        }
+
+        Ok(outputs)
+    }
+
+    /// Marks a subagent output buffer with content.
+    pub async fn append_subagent_output(&self, agent_id: &str, content: &str) {
+        let mut contexts = self.subagent_contexts.write().await;
+        if let Some(context) = contexts.get_mut(agent_id) {
+            context.output_buffer.push_str(content);
+        }
+    }
+
+    /// Marks a subagent as completed with final status.
+    pub async fn mark_subagent_completed(&self, agent_id: &str, success: bool) {
+        let mut contexts = self.subagent_contexts.write().await;
+        if let Some(context) = contexts.get_mut(agent_id) {
+            context.status = if success {
+                SubagentStatus::Completed
+            } else {
+                SubagentStatus::Failed("Agent failed".to_string())
+            };
+            context.completion_time = Some(Instant::now());
+        }
     }
 }

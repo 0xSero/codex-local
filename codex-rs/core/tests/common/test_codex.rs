@@ -45,7 +45,10 @@ impl TestCodexBuilder {
         for mutator in mutators {
             mutator(&mut config)
         }
-        let conversation_manager = ConversationManager::with_auth(CodexAuth::from_api_key("dummy"));
+        let conversation_manager = std::sync::Arc::new(ConversationManager::with_auth(
+            CodexAuth::from_api_key("dummy"),
+        ));
+        conversation_manager.init_self_ref();
         let NewConversation {
             conversation,
             session_configured,

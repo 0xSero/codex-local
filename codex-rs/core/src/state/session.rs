@@ -13,6 +13,7 @@ pub(crate) struct SessionState {
     pub(crate) history: ConversationHistory,
     pub(crate) token_info: Option<TokenUsageInfo>,
     pub(crate) latest_rate_limits: Option<RateLimitSnapshot>,
+    pub(crate) pending_task_complete: Option<(String, Option<String>)>,
 }
 
 impl SessionState {
@@ -20,6 +21,7 @@ impl SessionState {
     pub(crate) fn new() -> Self {
         Self {
             history: ConversationHistory::new(),
+            pending_task_complete: None,
             ..Default::default()
         }
     }
@@ -71,6 +73,18 @@ impl SessionState {
                 self.token_info = Some(TokenUsageInfo::full_context_window(context_window));
             }
         }
+    }
+
+    pub(crate) fn set_pending_task_complete(
+        &mut self,
+        sub_id: String,
+        last_agent_message: Option<String>,
+    ) {
+        self.pending_task_complete = Some((sub_id, last_agent_message));
+    }
+
+    pub(crate) fn take_pending_task_complete(&mut self) -> Option<(String, Option<String>)> {
+        self.pending_task_complete.take()
     }
 
     // Pending input/approval moved to TurnState.

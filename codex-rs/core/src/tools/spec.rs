@@ -832,7 +832,11 @@ pub(crate) fn build_specs(
 
     if config.spawn_agent_tool {
         let spawn_agent_handler = Arc::new(SpawnAgentHandler);
-        builder.push_spec(create_spawn_agent_tool());
+        // Allow multiple subagents to be spawned concurrently. The tool
+        // handler blocks until each child completes, and the turn runtime
+        // waits for all tool futures to resolve before proceeding, so the
+        // main agent will not continue until all subagents finish.
+        builder.push_spec_with_parallel_support(create_spawn_agent_tool(), true);
         builder.register_handler("spawn_agent", spawn_agent_handler);
     }
 

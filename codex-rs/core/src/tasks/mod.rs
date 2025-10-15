@@ -12,7 +12,6 @@ use crate::codex::TurnContext;
 use crate::protocol::Event;
 use crate::protocol::EventMsg;
 use crate::protocol::InputItem;
-use crate::protocol::TaskCompleteEvent;
 use crate::protocol::TurnAbortReason;
 use crate::protocol::TurnAbortedEvent;
 use crate::state::ActiveTurn;
@@ -111,11 +110,14 @@ impl Session {
             *active = None;
         }
         drop(active);
-        let event = Event {
-            id: sub_id,
-            msg: EventMsg::TaskComplete(TaskCompleteEvent { last_agent_message }),
-        };
-        self.send_event(event).await;
+
+        if self.has_child_agents().await {
+            self.set_pending_task_complete(sub_id, last_agent_message)
+                .await;
+            return;
+        }
+
+        self.emit_task_complete(sub_id, last_agent_message).await;
     }
 
     async fn register_new_active_task(&self, sub_id: String, task: RunningTask) {

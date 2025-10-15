@@ -229,8 +229,7 @@ struct AgentMeta {
 
 struct SubAgentState {
     color: Color,
-    active_cell: Option<Box<dyn HistoryCell>>,
-    running_commands: HashMap<String, (Vec<String>, Vec<ParsedCommand>)>,
+    _active_cell: Option<Box<dyn HistoryCell>>,
     message_buffer: String,
     reasoning_buffer: String,
     full_reasoning_buffer: String,
@@ -242,8 +241,7 @@ impl SubAgentState {
     fn new(color: Color) -> Self {
         Self {
             color,
-            active_cell: None,
-            running_commands: HashMap::new(),
+            _active_cell: None,
             message_buffer: String::new(),
             reasoning_buffer: String::new(),
             full_reasoning_buffer: String::new(),
@@ -338,7 +336,7 @@ impl SubAgentState {
                     if ev.is_success() { "ok" } else { "failed" }
                 ));
             }
-            EventMsg::ViewImageToolCall(ev) => {
+            EventMsg::ViewImageToolCall(_ev) => {
                 // Skip image/tool visualization for subagents; update status only
                 self.record_status("viewed image");
             }
@@ -411,7 +409,7 @@ impl SubAgentState {
         let mut lines: Vec<Line<'static>> = vec![status_line];
         let trimmed_summary = summary.trim().to_owned();
         if !trimmed_summary.is_empty() {
-            lines.push(Line::from(trimmed_summary));
+            append_markdown(&trimmed_summary, None, &mut lines, config);
         }
         if let Some(pct) = self.context_percent {
             lines.push(format!("context remaining: {pct}%").dim().into());
@@ -476,11 +474,6 @@ impl SubAgentState {
         self.decorate_with(cell, prefix.clone(), prefix)
     }
 
-    fn make_prefix(symbol: &str, color: Color) -> Line<'static> {
-        let span = Span::styled(symbol.to_string(), Style::default().fg(color));
-        Line::from(vec![span])
-    }
-
     fn flush_message(
         &mut self,
         message: Option<String>,
@@ -542,146 +535,10 @@ impl SubAgentState {
         self.reasoning_buffer.clear();
     }
 
-    fn flush_active_cell(&mut self, outputs: &mut Vec<Box<dyn HistoryCell>>) {
-        if let Some(cell) = self.active_cell.take() {
-            outputs.push(self.decorate_body(cell));
-        }
-    }
-
-    fn handle_exec_begin(
-        &mut self,
-        ev: ExecCommandBeginEvent,
-        config: &Config,
-        outputs: &mut Vec<Box<dyn HistoryCell>>,
-    ) {
-        self.flush_message(None, config, outputs);
-        self.flush_reasoning(config, outputs);
-        self.flush_active_cell(outputs);
-
-        self.running_commands.insert(
-            ev.call_id.clone(),
-            (ev.command.clone(), ev.parsed_cmd.clone()),
-        );
-
-        if let Some(cell) = self
-            .active_cell
-            .as_mut()
-            .and_then(|c| c.as_any_mut().downcast_mut::<ExecCell>())
-            && let Some(new_cell) = cell.with_added_call(
-                ev.call_id.clone(),
-                ev.command.clone(),
-                ev.parsed_cmd.clone(),
-            )
-        {
-            *cell = new_cell;
-        } else {
-            self.active_cell = Some(Box::new(new_active_exec_command(
-                ev.call_id.clone(),
-                ev.command.clone(),
-                ev.parsed_cmd.clone(),
-            )));
-        }
-
-        let snippet = join_command_preview(&ev.command);
-        self.record_status(&format!("exec {snippet}"));
-    }
-
-    fn handle_exec_end(
-        &mut self,
-        ev: ExecCommandEndEvent,
-        outputs: &mut Vec<Box<dyn HistoryCell>>,
-    ) {
-        let (command, parsed) = self
-            .running_commands
-            .remove(&ev.call_id)
-            .unwrap_or_else(|| (vec![ev.call_id.clone()], Vec::new()));
-
-        let needs_new = self
-            .active_cell
-            .as_ref()
-            .map(|cell| cell.as_any().downcast_ref::<ExecCell>().is_none())
-            .unwrap_or(true);
-        if needs_new {
-            self.flush_active_cell(outputs);
-            self.active_cell = Some(Box::new(new_active_exec_command(
-                ev.call_id.clone(),
-                command,
-                parsed,
-            )));
-        }
-
-        if let Some(cell) = self
-            .active_cell
-            .as_mut()
-            .and_then(|c| c.as_any_mut().downcast_mut::<ExecCell>())
-        {
-            cell.complete_call(
-                &ev.call_id,
-                CommandOutput {
-                    exit_code: ev.exit_code,
-                    stdout: ev.stdout.clone(),
-                    stderr: ev.stderr.clone(),
-                    formatted_output: ev.formatted_output.clone(),
-                },
-                ev.duration,
-            );
-            if cell.should_flush() {
-                self.flush_active_cell(outputs);
-            }
-        }
-        self.record_status(&format!("exec exit {}", ev.exit_code));
-    }
-
-    fn handle_mcp_begin(
-        &mut self,
-        ev: McpToolCallBeginEvent,
-        config: &Config,
-        outputs: &mut Vec<Box<dyn HistoryCell>>,
-    ) {
-        self.flush_message(None, config, outputs);
-        self.flush_reasoning(config, outputs);
-        self.flush_active_cell(outputs);
-        self.active_cell = Some(Box::new(history_cell::new_active_mcp_tool_call(
-            ev.call_id.clone(),
-            ev.invocation.clone(),
-        )));
-        self.record_status(&format!(
-            "tool {}.{}",
-            ev.invocation.server, ev.invocation.tool
-        ));
-    }
-
-    fn handle_mcp_end(&mut self, ev: McpToolCallEndEvent, outputs: &mut Vec<Box<dyn HistoryCell>>) {
-        let extra_cell = match self
-            .active_cell
-            .as_mut()
-            .and_then(|cell| cell.as_any_mut().downcast_mut::<McpToolCallCell>())
-        {
-            Some(cell) if cell.call_id() == ev.call_id => {
-                cell.complete(ev.duration, ev.result.clone())
-            }
-            _ => {
-                let mut cell = history_cell::new_active_mcp_tool_call(
-                    ev.call_id.clone(),
-                    ev.invocation.clone(),
-                );
-                let extra = cell.complete(ev.duration, ev.result.clone());
-                self.active_cell = Some(Box::new(cell));
-                extra
-            }
-        };
-
-        self.flush_active_cell(outputs);
-        if let Some(extra) = extra_cell {
-            outputs.push(self.decorate_body(extra));
-        }
-
-        self.record_status(&format!(
-            "tool {}.{} {}",
-            ev.invocation.server,
-            ev.invocation.tool,
-            if ev.is_success() { "ok" } else { "failed" }
-        ));
+    fn flush_active_cell(&mut self, _outputs: &mut [Box<dyn HistoryCell>]) {
+        // This method intentionally does nothing for SubAgentState.
+        // SubAgentState cells are not flushed to outputs; they remain internal
+        // until completion_cells() is called.
     }
 }
 
@@ -740,6 +597,8 @@ pub(crate) struct ChatWidget {
     suppress_session_configured_redraw: bool,
     // User messages queued while a turn is in progress
     queued_user_messages: VecDeque<UserMessage>,
+    // Whether we've auto-scheduled a continuation turn after subagents finish
+    auto_continuation_scheduled: bool,
     // Pending notification to show when unfocused on next Draw
     pending_notification: Option<Notification>,
     // Simple review mode flag; used to adjust layout and banners.
@@ -947,6 +806,8 @@ impl ChatWidget {
         self.set_status_header(String::from("Working"));
         self.full_reasoning_buffer.clear();
         self.reasoning_buffer.clear();
+        // Reset auto-continuation scheduling at the start of each turn.
+        self.auto_continuation_scheduled = false;
         self.request_redraw();
     }
 
@@ -1205,6 +1066,44 @@ impl ChatWidget {
         debug!("TurnDiffEvent: {unified_diff}");
     }
 
+    /// If all subagents have completed and nothing is running, enqueue a brief
+    /// user message asking the main agent to continue from the subagent results.
+    fn maybe_schedule_auto_continuation(&mut self) {
+        if self.auto_continuation_scheduled {
+            return;
+        }
+        if !self.subagent_states.is_empty() {
+            return;
+        }
+        if self.bottom_pane.is_task_running() {
+            return;
+        }
+
+        // Compose a compact follow-up prompt to resume the main thread.
+        let mut completed: usize = 0;
+        let mut failed: usize = 0;
+        for meta in self.agents.values() {
+            match meta.status {
+                Some(true) => completed += 1,
+                Some(false) => failed += 1,
+                None => {}
+            }
+        }
+
+        let summary_line = if completed + failed > 0 {
+            format!("Subagents completed: {completed} ok, {failed} failed.")
+        } else {
+            "Subagent run completed.".to_string()
+        };
+
+        let prompt = format!(
+            "{summary_line}\n\nPlease continue the main task using the results above. Summarize key outcomes and either finish the task or propose the next steps."
+        );
+
+        self.auto_continuation_scheduled = true;
+        self.submit_user_message(prompt.into());
+    }
+
     fn on_background_event(&mut self, message: String) {
         debug!("BackgroundEvent: {message}");
     }
@@ -1221,7 +1120,8 @@ impl ChatWidget {
         let event = *agent_event.event;
 
         // Assign different colors to different agents for better visual distinction
-        let agent_colors = [Color::Cyan,
+        let agent_colors = [
+            Color::Cyan,
             Color::Green,
             Color::Yellow,
             Color::Blue,
@@ -1229,7 +1129,8 @@ impl ChatWidget {
             Color::Red,
             Color::White,
             Color::LightGreen,
-            Color::LightBlue];
+            Color::LightBlue,
+        ];
 
         // Find consistent color assignment based on agent order
         let agent_ids: Vec<String> = self.agents.keys().cloned().collect();
@@ -1246,7 +1147,7 @@ impl ChatWidget {
             .subagent_states
             .entry(agent_id.clone())
             .or_insert_with(|| SubAgentState::new(color));
-        let outputs = state.handle_event(event, &self.config);
+        let _outputs = state.handle_event(event, &self.config);
         // We intentionally do not add intermediate subagent output cells
         // to the transcript to keep the UI compact; the footer shows a
         // concise, colored status bar for the active subagent.
@@ -1593,6 +1494,7 @@ impl ChatWidget {
             retry_status_header: None,
             conversation_id: None,
             queued_user_messages: VecDeque::new(),
+            auto_continuation_scheduled: false,
             show_welcome_banner: true,
             suppress_session_configured_redraw: false,
             pending_notification: None,
@@ -1672,6 +1574,7 @@ impl ChatWidget {
             retry_status_header: None,
             conversation_id: None,
             queued_user_messages: VecDeque::new(),
+            auto_continuation_scheduled: false,
             show_welcome_banner: true,
             suppress_session_configured_redraw: true,
             pending_notification: None,
@@ -1742,13 +1645,15 @@ impl ChatWidget {
                 kind: KeyEventKind::Press,
                 ..
             } if modifiers.contains(KeyModifiers::CONTROL) => {
-                let agent_index = c.to_digit(10).unwrap() as usize - 1;
-                let agent_ids: Vec<String> = self.agents.keys().cloned().collect();
-                if let Some(agent_id) = agent_ids.get(agent_index) {
-                    // Switch to the selected agent
-                    self.active_subagent = Some(agent_id.clone());
-                    self.refresh_footer_subagent();
-                    self.request_redraw();
+                if let Some(digit) = c.to_digit(10) {
+                    let agent_index = digit as usize - 1;
+                    let agent_ids: Vec<String> = self.agents.keys().cloned().collect();
+                    if let Some(agent_id) = agent_ids.get(agent_index) {
+                        // Switch to the selected agent
+                        self.active_subagent = Some(agent_id.clone());
+                        self.refresh_footer_subagent();
+                        self.request_redraw();
+                    }
                 }
                 return;
             }
@@ -2421,7 +2326,7 @@ impl ChatWidget {
                 // Always add a single compact completion summary so users
                 // see the result without the intermediate noise.
                 if let Some(ev) = fallback {
-                    self.add_to_history(history_cell::new_agent_completed_event(ev));
+                    self.add_to_history(history_cell::new_agent_completed_event(ev, &self.config));
                 }
 
                 if self
@@ -2432,6 +2337,8 @@ impl ChatWidget {
                     self.active_subagent = self.subagent_states.keys().next().cloned();
                 }
                 self.refresh_footer_subagent();
+                // If all subagents are done and we're idle, schedule a continuation turn.
+                self.maybe_schedule_auto_continuation();
                 self.request_redraw();
             }
             EventMsg::AgentSwitched(_) => {

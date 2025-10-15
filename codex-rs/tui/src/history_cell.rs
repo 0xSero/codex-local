@@ -1264,6 +1264,7 @@ pub(crate) fn new_view_image_tool_call(path: PathBuf, cwd: &Path) -> PlainHistor
 }
 
 /// Render a concise card for an `AgentSpawned` orchestrator event.
+#[allow(dead_code)]
 pub(crate) fn new_agent_spawned_event(ev: AgentSpawnedEvent) -> PlainHistoryCell {
     let title: Line<'static> = vec!["• ".dim(), "Agent Spawned".bold()].into();
 
@@ -1309,6 +1310,7 @@ pub(crate) type AgentOverviewEntry = (
 );
 
 /// Render a progress line for an agent.
+#[allow(dead_code)]
 pub(crate) fn new_agent_progress_event(view: AgentCardView<'_>) -> PlainHistoryCell {
     build_agent_card(view, 6)
 }
@@ -1372,6 +1374,7 @@ fn build_agent_card(view: AgentCardView<'_>, max_transcript_lines: usize) -> Pla
     PlainHistoryCell::new(lines)
 }
 
+#[allow(dead_code)]
 pub(crate) fn new_agent_progress_fallback(ev: AgentProgressEvent) -> PlainHistoryCell {
     let lines: Vec<Line<'static>> = vec![
         vec!["• ".dim(), "Agent Progress".bold()].into(),
@@ -1385,20 +1388,26 @@ pub(crate) fn new_agent_progress_fallback(ev: AgentProgressEvent) -> PlainHistor
 }
 
 /// Render a completion summary for an agent.
-pub(crate) fn new_agent_completed_event(ev: AgentCompletedEvent) -> PlainHistoryCell {
+pub(crate) fn new_agent_completed_event(
+    ev: AgentCompletedEvent,
+    config: &Config,
+) -> PlainHistoryCell {
     let status = if ev.success {
         "✓ Completed".green().bold()
     } else {
         "✗ Failed".red().bold()
     };
     let title: Line<'static> = vec!["• ".dim(), status].into();
-    let body: Vec<Line<'static>> = vec![
-        vec!["agent: ".dim(), ev.agent_id.into()].into(),
-        vec!["summary: ".dim(), ev.summary.into()].into(),
-    ];
-    let lines = std::iter::once(title)
-        .chain(prefix_lines(body, "  └ ".dim(), "    ".into()))
-        .collect();
+    let mut body: Vec<Line<'static>> = vec![vec!["agent: ".dim(), ev.agent_id.into()].into()];
+    // Render the summary through the markdown renderer for proper formatting.
+    let mut rendered_summary: Vec<Line<'static>> = Vec::new();
+    append_markdown(&ev.summary, None, &mut rendered_summary, config);
+    // Indent the summary under the agent line
+    let indented = prefix_lines(rendered_summary, "  └ ".dim(), "    ".into());
+    body.extend(indented);
+    let mut lines: Vec<Line<'static>> = Vec::new();
+    lines.push(title);
+    lines.extend(body);
     PlainHistoryCell::new(lines)
 }
 

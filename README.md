@@ -1,187 +1,433 @@
-# Codex-Local: Custom LLM Integration
+# Codex-Local: Enhanced OpenAI Codex CLI
 
-Fork of OpenAI Codex CLI with custom model support and enhanced features.
+> **Fork of OpenAI Codex CLI with advanced orchestrator features, child agent spawning, and enhanced tool capabilities**
 
-## Features
+## 🎯 Why This Fork Exists
 
-### Custom LLM Support
-- **120K Context Window** - Extended context for longer conversations
-- **64K Output Tokens** - Large response capacity
-- **Auto-Compaction** - Triggers at 75% context usage (90K tokens)
-- **Custom API Provider** - Connect to any OpenAI-compatible endpoint
+Codex-Local exists to extend OpenAI's Codex CLI with powerful multi-agent capabilities and enhanced tooling that are not available in the main distribution. This fork adds:
 
-### Enhanced UI
-- **Real-time Token Tracking** - See token usage as you chat
-- **XML Thinking Blocks** - Beautiful bordered rendering of `<think>`, `<thinking>`, `<reasoning>` tags
-- **Detailed Footer** - Shows: % left · current/max · used · remaining · session total
-- **7 Custom Slash Commands** - Quick access to settings and info
+- **Multi-Agent Orchestration** - Spawn and coordinate specialized child agents
+- **Enhanced Tool System** - Advanced tools with progress reporting and parallel execution
+- **Custom Configuration** - Full control over models, providers, and behavior
+- **Non-Conflicting Installation** - Runs alongside your main Codex/Cursor installation
 
-### MCP Integration
-Includes 6 pre-configured MCP servers:
-- **brave-search** - Web search
-- **context7** - Library documentation
-- **image_recognition** - Z.AI image/video analysis
-- **memory** - Knowledge graph persistence
-- **puppeteer** - Browser automation
-- **supabase** - Database operations
+---
 
-## Installation
+## 🚀 Key Features
 
+### 🤖 Multi-Agent Orchestration System
+
+**Core Innovation**: The ability to spawn specialized child agents that can work in parallel and report progress back to a parent agent.
+
+#### How It Works:
+1. **Parent Agent** receives a complex task
+2. **Spawn Agent Tool** creates specialized child agents for different subtasks
+3. **Child Agents** work independently with their own tool access
+4. **Return Progress Tool** allows child agents to send status updates back to parent
+5. **Parent Agent** coordinates all child agents and synthesizes results
+
+#### Benefits:
+- **Parallel Processing** - Multiple agents work simultaneously on different aspects of a task
+- **Specialization** - Each agent can focus on a specific domain (e.g., frontend, backend, testing)
+- **Scalability** - Complex projects can be broken down into manageable pieces
+- **Real-time Updates** - Parent agent receives progress reports from all children
+
+### 🛠️ Enhanced Tool System
+
+#### Return Progress Tool
+- **Purpose**: Child agents send progress updates to parent agents
+- **Parameters**:
+  - `task_id` (optional): Unique identifier for the task/agent
+  - `progress` (required): Progress message
+  - `is_final` (optional): Whether this is the final update
+- **Use Case**: Long-running tasks where the parent needs to monitor progress
+
+#### Spawn Agent Tool
+- **Purpose**: Create new child agents with specific instructions and tools
+- **Features**:
+  - Parallel execution support
+  - Customizable tool sets for each agent
+  - Independent context management
+  - Automatic cleanup when tasks complete
+
+#### Enhanced Tool Registry
+- **Dynamic Tool Loading**: Tools can be conditionally enabled based on configuration
+- **Parallel Tool Execution**: Multiple tools can run simultaneously
+- **Progress Tracking**: Tools can report progress during long operations
+- **Error Handling**: Robust error recovery and reporting
+
+### 🏗️ Advanced Architecture
+
+#### Child Agent Bridge
+- **Isolation**: Each child agent has its own context and session
+- **Communication**: Secure bridge between parent and child agents
+- **Progress Tracking**: Child agents can send real-time updates to parents
+- **Resource Management**: Automatic cleanup of completed agents
+
+#### Enhanced Conversation Manager
+- **Multi-Agent Support**: Manage multiple concurrent agent conversations
+- **Context Isolation**: Each agent maintains its own context
+- **Progress Events**: Real-time progress reporting between agents
+- **Session Management**: Advanced session lifecycle management
+
+---
+
+## 📦 Installation
+
+### Prerequisites
+- Rust 1.70+
+- Node.js 18+
+- Git
+
+### Step 1: Clone Repository
 ```bash
-# Clone the repository
 git clone https://github.com/0xSero/codex-local.git
 cd codex-local
-
-# Build and install
-~/bin/codex-local-build
 ```
 
-The build script:
-1. Builds Rust binaries in release mode
-2. Copies to vendor directory
-3. Runs `npm link` to install globally
+### Step 2: Build and Install
+```bash
+# Build Rust components
+cd codex-rs
+cargo build --release
 
-## Configuration
+# Install Node.js wrapper
+cd ../codex-cli
+npm install
+npm run build
+npm link
+```
 
-Config file: `~/.codex-local/config.toml`
+### Step 3: Verify Installation
+```bash
+codex-local --version
+# Should output: codex-cli 1.0.0-local-<commit-hash>
+```
 
-### Example Configuration
+### Non-Conflicting Setup
 
+**This fork is designed to NOT conflict with your existing Codex/Cursor installation:**
+
+- **Separate Binary**: `codex-local` vs `codex`
+- **Separate Config**: `~/.codex-local/` vs `~/.codex/`
+- **Separate Data**: Isolated sessions, history, and cache
+- **Independent Updates**: Won't affect your main Codex installation
+
+**Your main Codex/Cursor remains completely untouched!**
+
+---
+
+## ⚙️ Configuration
+
+### Config File Location
+```
+~/.codex-local/config.toml
+```
+
+### Basic Configuration
 ```toml
-model = "/mnt/llm_models/GLM-4.5-Air-AWQ-4bit"
-model_provider = "custom-glm"
+# Model Settings
+model = "gpt-4"
+model_provider = "openai"
 model_context_window = 120000
 model_max_output_tokens = 65536
-model_auto_compact_token_limit = 90000
 
-[model_providers.custom-glm]
-name = "Custom GLM"
+# Multi-Agent Settings
+[orchestrator]
+max_concurrent_agents = 5
+agent_timeout_seconds = 300
+enable_progress_tracking = true
+
+# Tool Settings
+[tools]
+enable_spawn_agent = true
+enable_return_progress = true
+enable_parallel_execution = true
+
+# Custom Provider (if needed)
+[model_providers.custom]
+name = "Custom API"
 base_url = "https://your-api-endpoint.com/v1"
 wire_api = "chat"
 request_max_retries = 5
-stream_max_retries = 5
-stream_idle_timeout_ms = 300000
 ```
 
-### Profiles
+### Advanced Configuration
 
-Create profiles for different use cases:
-
+#### Profiles for Different Use Cases
 ```toml
-[profiles.glm-long]
-model_auto_compact_token_limit = 100000  # 83% context
+[profiles.research]
+enable_spawn_agent = true
+max_concurrent_agents = 10
+enable_parallel_execution = true
 
-[profiles.glm-fast]
+[profiles.simple]
+enable_spawn_agent = false
 model_context_window = 32000
-model_auto_compact_token_limit = 24000
+
+[profiles.debug]
+enable_progress_tracking = true
+agent_timeout_seconds = 600
 ```
 
-Use with: `codex-local -p glm-long`
+#### Custom Model Providers
+```toml
+[model_providers.anthropic]
+name = "Anthropic Claude"
+base_url = "https://api.anthropic.com"
+wire_api = "anthropic"
+api_key_env = "ANTHROPIC_API_KEY"
 
-## Slash Commands
-
-Access settings and info during chat:
-
-- `/config` - View full configuration
-- `/context` - Show context window size
-- `/tokens` - Show max output tokens
-- `/provider` - Show API provider details
-- `/models` - Show model information
-- `/compact-settings` - Show auto-compaction settings
-- `/think` - Show XML rendering status
-
-## Token Tracking
-
-Codex-local tracks tokens in real-time:
-
-### Input Tokens
-Counted automatically when you send messages using tiktoken (cl100k_base)
-
-### Output Tokens
-Counted as the model streams responses back
-
-### Footer Display
-Shows live updates:
-```
-75% context left · 30/120 tokens (30K used, 90K remaining, 45K total session)
+[model_providers.local]
+name = "Local LLM"
+base_url = "http://localhost:8080/v1"
+wire_api = "chat"
+request_max_retries = 1
 ```
 
-## Technical Details
+### Environment Variables
+```bash
+# API Keys (if not in config)
+export OPENAI_API_KEY="your-key"
+export ANTHROPIC_API_KEY="your-key"
 
-### Architecture
-- **Rust TUI** - Terminal UI built with Ratatui
-- **Tokio async** - Non-blocking I/O
-- **MCP Protocol** - Model Context Protocol for tool integrations
-- **OpenAI Compatible** - Works with any `/v1/chat/completions` endpoint
+# Debug Mode
+export CODEX_LOCAL_DEBUG=true
 
-### Token Counting
-- Uses `tiktoken-rs` library
-- cl100k_base tokenizer (GPT-4 compatible)
-- Tracks per-message and session totals
-- Updates on every stream chunk
+# Custom Config Location
+export CODEX_LOCAL_CONFIG="/path/to/config.toml"
+```
 
-### XML Rendering
-Custom parser for thinking blocks:
-- Detects `<think>`, `<thinking>`, `<thought>`, `<reasoning>`, `<internal>` tags
-- Renders as bordered boxes with proper text wrapping
-- 76-character fixed width for consistency
+---
 
-## Development
+## 🎮 Usage
 
-### Build from Source
+### Basic Usage
+```bash
+# Start with default configuration
+codex-local
 
+# Use a specific profile
+codex-local --profile research
+
+# Use custom config file
+codex-local --config /path/to/config.toml
+```
+
+### Multi-Agent Examples
+
+#### 1. Research Task with Multiple Agents
+```
+I need to research and implement a web scraping solution. Please:
+1. Spawn an agent to research the best scraping libraries for Python
+2. Spawn another agent to research legal considerations for web scraping
+3. Spawn a third agent to implement a basic scraper example
+4. Coordinate the results and provide a comprehensive recommendation
+```
+
+#### 2. Code Review and Testing
+```
+Please review this codebase and create tests:
+1. Spawn an agent to analyze the codebase structure
+2. Spawn another agent to identify areas needing tests
+3. Spawn a third agent to write unit tests
+4. Have all agents report progress and coordinate final test suite
+```
+
+### Progress Monitoring
+When child agents are working, you'll see real-time progress updates:
+```
+🔄 Agent research-agent: Found 5 scraping libraries, evaluating...
+🔄 Agent legal-agent: Reviewing robots.txt and terms of service...
+🔄 Agent implementation-agent: Setting up virtual environment...
+✅ Agent research-agent: Research complete, recommending BeautifulSoup4
+```
+
+---
+
+## 🔧 Development
+
+### Building from Source
 ```bash
 cd codex-rs
-cargo build --release --bin codex
+cargo build --release --bin codex-local
 ```
 
-### Run Tests
-
+### Running Tests
 ```bash
+# Run all tests
 cargo test
+
+# Run specific test suites
+cargo test spawn_agent_parallel
+cargo test orchestrator_tests
 ```
 
 ### Project Structure
-
 ```
 codex-local/
-├── codex-rs/          # Rust source code
-│   ├── tui/           # Terminal UI implementation
-│   ├── core/          # Core Codex logic
-│   ├── mcp-client/    # MCP integration
-│   └── ...
-├── codex-cli/         # npm wrapper
-│   └── vendor/        # Platform binaries
-└── README-CODEX-LOCAL.md
+├── codex-rs/                    # Rust source code
+│   ├── core/                   # Core logic and tools
+│   │   ├── src/
+│   │   │   ├── tools/          # Enhanced tool system
+│   │   │   ├── conversation_manager.rs  # Multi-agent support
+│   │   │   ├── child_agent_bridge.rs    # Agent communication
+│   │   │   └── orchestrator.rs   # Agent coordination
+│   │   └── tests/suite/         # Comprehensive test suite
+│   ├── cli/                    # Command-line interface
+│   └── tui/                    # Terminal UI
+├── codex-cli/                  # Node.js wrapper
+│   ├── src/                    # Wrapper logic
+│   └── vendor/                 # Platform binaries
+└── docs/                       # Documentation
 ```
 
-## Branch Information
+### Key Architecture Components
 
-**Branch**: `local/llms`
-All custom modifications live here. Keep this branch separate from upstream updates.
+#### Child Agent Bridge (`core/src/child_agent_bridge.rs`)
+- Manages communication between parent and child agents
+- Handles progress reporting and status updates
+- Provides secure isolation between agent contexts
 
-## Troubleshooting
+#### Enhanced Tools (`core/src/tools/`)
+- **Spawn Agent Tool**: Creates new child agents with custom instructions
+- **Return Progress Tool**: Allows agents to report progress
+- **Parallel Execution**: Multiple tools can run simultaneously
 
-### Token counts not updating
-- Ensure you're on the `local/llms` branch
-- Rebuild: `~/bin/codex-local-build`
-- Check that tiktoken-rs compiled successfully
+#### Conversation Manager (`core/src/conversation_manager.rs`)
+- Manages multiple concurrent agent conversations
+- Handles context isolation and resource management
+- Coordinates agent lifecycle and cleanup
 
-### Thinking blocks look wrong
-- Terminal must support Unicode box-drawing characters
-- Try iTerm2 or Alacritty with `builtin_box_drawing` enabled
+---
 
-### Model not responding
-- Check API endpoint in config: `base_url`
-- Verify API is reachable: `curl $base_url/v1/models`
-- Check logs: `~/.codex-local/log/codex-tui.log`
+## 🆚 Key Differences from Main Codex
 
-## Credits
+| Feature | Main Codex | Codex-Local |
+|---------|------------|-------------|
+| **Multi-Agent Support** | ❌ | ✅ Native orchestrator system |
+| **Child Agent Spawning** | ❌ | ✅ `spawn_agent` tool |
+| **Progress Reporting** | ❌ | ✅ `return_progress` tool |
+| **Parallel Tool Execution** | ❌ | ✅ Full parallel support |
+| **Custom Configuration** | ⚠️ Limited | ✅ Advanced configuration system |
+| **Installation** | System-wide | ✅ Non-conflicting, isolated |
+| **Config Location** | `~/.codex/` | ✅ `~/.codex-local/` |
+| **Binary Name** | `codex` | ✅ `codex-local` |
 
-- **Original Codex**: OpenAI
-- **Custom Fork**: 0xSero
-- **Enhancements**: Claude (token tracking, UI improvements, documentation)
+### Technical Enhancements
+- **Enhanced Tool Registry**: Dynamic tool loading with conditional activation
+- **Improved Error Handling**: Better error recovery and reporting
+- **Performance Optimizations**: Faster tool execution and context management
+- **Extensibility**: Plugin-like architecture for custom tools
 
-## License
+---
 
-Apache 2.0 (inherited from upstream Codex project)
+## 🐛 Troubleshooting
+
+### Common Issues
+
+#### Installation Problems
+```bash
+# If cargo build fails, ensure Rust is up to date
+rustup update
+
+# If npm link fails, try with sudo
+sudo npm link
+
+# Clean build if needed
+cargo clean && cargo build --release
+```
+
+#### Configuration Issues
+```bash
+# Check config syntax
+codex-local --check-config
+
+# Reset to default config
+mv ~/.codex-local/config.toml ~/.codex-local/config.toml.backup
+codex-local --init-config
+```
+
+#### Agent Issues
+```bash
+# Check agent logs
+tail -f ~/.codex-local/log/agents.log
+
+# Debug mode
+CODEX_LOCAL_DEBUG=true codex-local
+
+# Reset agent state
+rm -rf ~/.codex-local/sessions/
+```
+
+### Performance Issues
+- **Reduce concurrent agents**: Set `max_concurrent_agents = 2` in config
+- **Increase timeouts**: Set `agent_timeout_seconds = 600` for slow tasks
+- **Disable parallel tools**: Set `enable_parallel_execution = false`
+
+### Getting Help
+- **Check logs**: `~/.codex-local/log/`
+- **Debug mode**: `CODEX_LOCAL_DEBUG=true codex-local`
+- **Issue reporting**: GitHub issues with full logs
+
+---
+
+## 🤝 Contributing
+
+### Development Setup
+```bash
+# Clone and setup
+git clone https://github.com/0xSero/codex-local.git
+cd codex-local
+
+# Install development dependencies
+cd codex-rs
+cargo install cargo-watch
+
+# Run tests in watch mode
+cargo watch -x test
+
+# Build and run locally
+cargo run --bin codex-local -- --help
+```
+
+### Code Style
+- Follow Rust formatting conventions
+- Add comprehensive tests for new features
+- Update documentation for API changes
+- Ensure all existing tests pass
+
+### Submitting Changes
+1. Fork the repository
+2. Create a feature branch
+3. Add tests for new functionality
+4. Ensure all tests pass
+5. Submit a pull request with detailed description
+
+---
+
+## 📄 License
+
+Apache 2.0 License - inherited from the original OpenAI Codex project.
+
+---
+
+## 🙏 Acknowledgments
+
+- **OpenAI** - Original Codex CLI project
+- **Anthropic** - Claude assistance with documentation and features
+- **Contributors** - Community members who have helped improve this fork
+
+---
+
+## 📞 Support
+
+- **Issues**: [GitHub Issues](https://github.com/0xSero/codex-local/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/0xSero/codex-local/discussions)
+- **Documentation**: [Wiki](https://github.com/0xSero/codex-local/wiki)
+
+---
+
+**⭐ Star this repository if you find it useful!**
+
+*This fork extends OpenAI Codex with powerful multi-agent capabilities while maintaining full compatibility with existing workflows.*

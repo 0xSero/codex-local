@@ -1,3 +1,4 @@
+use crate::child_agent_bridge::ChildAgentBridge;
 use crate::config::Config as CoreConfig;
 use crate::config::ConfigOverrides;
 use crate::config::ConfigToml;
@@ -17,6 +18,7 @@ use codex_protocol::protocol::InputItem;
 use codex_protocol::protocol::Op;
 use codex_protocol::protocol::TaskCompleteEvent;
 use serde::Deserialize;
+use std::sync::Arc;
 
 pub struct SpawnAgentHandler;
 
@@ -60,7 +62,7 @@ impl ToolHandler for SpawnAgentHandler {
         })?;
 
         // Get the conversation manager and parent config from session services
-        let conversation_manager = &session.services.conversation_manager;
+        let conversation_manager = Arc::clone(&session.services.conversation_manager);
         let parent_config = (*session.services.config).clone();
 
         // Determine the profile to use for the child agent
@@ -125,6 +127,22 @@ impl ToolHandler for SpawnAgentHandler {
                 FunctionCallError::RespondToModel(format!("Failed to spawn child agent: {e}"))
             })?;
 
+        let child_conversation_id = child.conversation_id;
+        let bridge = Arc::new(ChildAgentBridge::new(
+            &session,
+            args.task_id.clone(),
+            sub_id.clone(),
+            child_conversation_id,
+        ));
+        conversation_manager
+            .register_child_agent_bridge(bridge.clone())
+            .await
+            .map_err(|e| {
+                FunctionCallError::RespondToModel(format!(
+                    "Failed to register child agent bridge: {e}"
+                ))
+            })?;
+
         // Emit an AgentSpawned event so UIs can reflect multi-agent activity
         let _ = session
             .send_event(Event {
@@ -162,6 +180,9 @@ impl ToolHandler for SpawnAgentHandler {
         let parent_sub_id_for_ui = sub_id.clone();
         let agent_id_for_ui = args.task_id.clone();
         let child_conversation_for_ui = child.conversation.clone();
+        let bridge_for_monitor = bridge.clone();
+        let conversation_manager_for_monitor = conversation_manager.clone();
+        let child_conversation_id_for_monitor = child_conversation_id;
 
         // Channel used to signal final outcome back to the tool handler
         // so we can return a single markdown-formatted result.
@@ -330,23 +351,30 @@ impl ToolHandler for SpawnAgentHandler {
                     codex_protocol::protocol::EventMsg::TaskComplete(TaskCompleteEvent {
                         last_agent_message,
                     }) => {
-                        // Use accumulated output (truncated) instead of just last message
-                        let final_message = if !accumulated_output.is_empty() {
+                        let fallback_message = if !accumulated_output.is_empty() {
                             accumulated_output.clone()
                         } else {
                             last_agent_message.or(last_message).unwrap_or_else(|| {
                                 "Child agent completed without returning a message.".to_string()
                             })
                         };
-                        // Compose a concise completion summary event for the UI
-                        let summary_heading = if truncated {
+
+                        let bridge_final_markdown = bridge_for_monitor.final_markdown().await;
+                        let summary_body = bridge_final_markdown
+                            .clone()
+                            .unwrap_or_else(|| fallback_message.clone());
+                        if bridge_final_markdown.is_none() {
+                            bridge_for_monitor.set_final_markdown(summary_body.clone()).await;
+                        }
+
+                        let summary_heading = if truncated && bridge_final_markdown.is_none() {
                             format!(
                                 "### Subagent `{agent_id_for_ui}` ✅ (output truncated to 5k tokens)"
                             )
                         } else {
                             format!("### Subagent `{agent_id_for_ui}` ✅")
                         };
-                        let summary = format!("{summary_heading}\n\n{final_message}");
+                        let summary = format!("{summary_heading}\n\n{summary_body}");
                         let summary_for_event = summary.clone();
 
                         let _ = parent_session_for_ui
@@ -366,7 +394,6 @@ impl ToolHandler for SpawnAgentHandler {
                             .unregister_child_agent(&agent_id_for_ui)
                             .await;
 
-                        // Signal completion back to the tool call with Markdown content
                         let injected = parent_session_for_ui
                             .inject_input(vec![InputItem::Text {
                                 text: summary.clone(),
@@ -381,7 +408,7 @@ impl ToolHandler for SpawnAgentHandler {
                                     msg: EventMsg::BackgroundEvent(
                                         codex_protocol::protocol::BackgroundEventEvent {
                                             message: format!(
-                                                "Subagent {agent_id_for_ui} completed but results could not be injected. Results: {final_message}"
+                                                "Subagent {agent_id_for_ui} completed but results could not be injected. Results: {summary_body}"
                                             ),
                                         },
                                     ),
@@ -395,7 +422,10 @@ impl ToolHandler for SpawnAgentHandler {
                             injected_into_turn: injected,
                         });
 
-                        // Exit monitor loop
+                        let _ = conversation_manager_for_monitor
+                            .remove_child_agent_bridge(&child_conversation_id_for_monitor)
+                            .await;
+
                         break;
                     }
                     codex_protocol::protocol::EventMsg::Error(err) => {
@@ -419,7 +449,6 @@ impl ToolHandler for SpawnAgentHandler {
                             .unregister_child_agent(&agent_id_for_ui)
                             .await;
 
-                        // Signal failure back to the tool call with Markdown content
                         let injected = parent_session_for_ui
                             .inject_input(vec![InputItem::Text {
                                 text: error_message.clone(),
@@ -449,7 +478,10 @@ impl ToolHandler for SpawnAgentHandler {
                             injected_into_turn: injected,
                         });
 
-                        // Exit monitor loop
+                        let _ = conversation_manager_for_monitor
+                            .remove_child_agent_bridge(&child_conversation_id_for_monitor)
+                            .await;
+
                         break;
                     }
                     codex_protocol::protocol::EventMsg::TurnAborted(aborted) => {
@@ -486,7 +518,6 @@ impl ToolHandler for SpawnAgentHandler {
                             .unregister_child_agent(&agent_id_for_ui)
                             .await;
 
-                        // Signal abort back to the tool call with Markdown content
                         let injected = parent_session_for_ui
                             .inject_input(vec![InputItem::Text {
                                 text: abort_message.clone(),
@@ -515,12 +546,19 @@ impl ToolHandler for SpawnAgentHandler {
                             injected_into_turn: injected,
                         });
 
-                        // Exit monitor loop
+                        let _ = conversation_manager_for_monitor
+                            .remove_child_agent_bridge(&child_conversation_id_for_monitor)
+                            .await;
+
                         break;
                     }
                     _ => {}
                 }
             }
+            let _ = conversation_manager_for_monitor
+                .remove_child_agent_bridge(&child_conversation_id_for_monitor)
+                .await;
+
         });
 
         // Block until we receive the subagent outcome, then return its

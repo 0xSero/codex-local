@@ -462,6 +462,7 @@ impl Session {
                 experimental_unified_exec_tool: config.use_experimental_unified_exec_tool,
                 include_spawn_agent_tool: config.active_orchestrator_profile.is_some()
                     && !config.active_agent_profiles.is_empty(),
+                include_return_progress_tool: !config.active_agent_profiles.is_empty(),
             }),
             user_instructions,
             base_instructions,
@@ -1104,6 +1105,10 @@ impl Session {
         self.abort_all_tasks(TurnAbortReason::Interrupted).await;
     }
 
+    pub(crate) fn conversation_id(&self) -> ConversationId {
+        self.conversation_id
+    }
+
     fn interrupt_task_sync(&self) {
         self.clear_child_agents_sync();
         if let Ok(mut active) = self.active_turn.try_lock()
@@ -1306,6 +1311,7 @@ async fn submission_loop(
                     experimental_unified_exec_tool: config.use_experimental_unified_exec_tool,
                     include_spawn_agent_tool: config.active_orchestrator_profile.is_some()
                         && !config.active_agent_profiles.is_empty(),
+                    include_return_progress_tool: !config.active_agent_profiles.is_empty(),
                 });
 
                 let new_turn_context = TurnContext {
@@ -1412,6 +1418,7 @@ async fn submission_loop(
                                 .use_experimental_unified_exec_tool,
                             include_spawn_agent_tool: config.active_orchestrator_profile.is_some()
                                 && !config.active_agent_profiles.is_empty(),
+                            include_return_progress_tool: !config.active_agent_profiles.is_empty(),
                         }),
                         user_instructions: turn_context.user_instructions.clone(),
                         base_instructions: turn_context.base_instructions.clone(),
@@ -1652,6 +1659,7 @@ async fn spawn_review_thread(
         include_view_image_tool: false,
         experimental_unified_exec_tool: config.use_experimental_unified_exec_tool,
         include_spawn_agent_tool: false, // Review threads don't need orchestrator
+        include_return_progress_tool: false,
     });
 
     let base_instructions = REVIEW_PROMPT.to_string();
@@ -2894,6 +2902,7 @@ mod tests {
             experimental_unified_exec_tool: config.use_experimental_unified_exec_tool,
             include_spawn_agent_tool: config.active_orchestrator_profile.is_some()
                 && !config.active_agent_profiles.is_empty(),
+            include_return_progress_tool: !config.active_agent_profiles.is_empty(),
         });
         let turn_context = TurnContext {
             client,
@@ -2976,6 +2985,7 @@ mod tests {
             experimental_unified_exec_tool: config.use_experimental_unified_exec_tool,
             include_spawn_agent_tool: config.active_orchestrator_profile.is_some()
                 && !config.active_agent_profiles.is_empty(),
+            include_return_progress_tool: !config.active_agent_profiles.is_empty(),
         });
         let turn_context = Arc::new(TurnContext {
             client,

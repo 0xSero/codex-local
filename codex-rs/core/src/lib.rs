@@ -13,6 +13,7 @@ mod client;
 mod client_common;
 pub mod codex;
 mod codex_conversation;
+mod child_agent_bridge;
 pub mod token_data;
 pub use codex_conversation::CodexConversation;
 mod command_safety;

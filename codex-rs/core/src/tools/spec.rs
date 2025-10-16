@@ -30,6 +30,7 @@ pub(crate) struct ToolsConfig {
     pub experimental_unified_exec_tool: bool,
     pub experimental_supported_tools: Vec<String>,
     pub spawn_agent_tool: bool,
+    pub return_progress_tool: bool,
 }
 
 pub(crate) struct ToolsConfigParams<'a> {
@@ -41,6 +42,7 @@ pub(crate) struct ToolsConfigParams<'a> {
     pub(crate) include_view_image_tool: bool,
     pub(crate) experimental_unified_exec_tool: bool,
     pub(crate) include_spawn_agent_tool: bool,
+    pub(crate) include_return_progress_tool: bool,
 }
 
 impl ToolsConfig {
@@ -54,6 +56,7 @@ impl ToolsConfig {
             include_view_image_tool,
             experimental_unified_exec_tool,
             include_spawn_agent_tool,
+            include_return_progress_tool,
         } = params;
         let shell_type = if *use_streamable_shell_tool {
             ConfigShellToolType::Streamable
@@ -84,6 +87,7 @@ impl ToolsConfig {
             experimental_unified_exec_tool: *experimental_unified_exec_tool,
             experimental_supported_tools: model_family.experimental_supported_tools.clone(),
             spawn_agent_tool: *include_spawn_agent_tool,
+            return_progress_tool: *include_return_progress_tool,
         }
     }
 }
@@ -319,6 +323,39 @@ fn create_test_sync_tool() -> ToolSpec {
         parameters: JsonSchema::Object {
             properties,
             required: None,
+            additional_properties: Some(false.into()),
+        },
+    })
+}
+
+fn create_return_progress_tool() -> ToolSpec {
+    let mut properties = BTreeMap::new();
+    properties.insert(
+        "task_id".to_string(),
+        JsonSchema::String {
+            description: Some("Optional unique identifier for this task/agent".to_string()),
+        },
+    );
+    properties.insert(
+        "progress".to_string(),
+        JsonSchema::String {
+            description: Some("Progress message to send to the parent agent".to_string()),
+        },
+    );
+    properties.insert(
+        "is_final".to_string(),
+        JsonSchema::Boolean {
+            description: Some("Whether this is the final progress update".to_string()),
+        },
+    );
+
+    ToolSpec::Function(ResponsesApiTool {
+        name: "return_progress".to_string(),
+        description: "Send progress updates from a child agent to its parent. Use this to provide status updates during long-running tasks.".to_string(),
+        strict: false,
+        parameters: JsonSchema::Object {
+            properties,
+            required: Some(vec!["progress".to_string()]),
             additional_properties: Some(false.into()),
         },
     })
@@ -779,6 +816,7 @@ pub(crate) fn build_specs(
     use crate::tools::handlers::McpHandler;
     use crate::tools::handlers::PlanHandler;
     use crate::tools::handlers::ReadFileHandler;
+    use crate::tools::handlers::ReturnProgressHandler;
     use crate::tools::handlers::ShellHandler;
     use crate::tools::handlers::SpawnAgentHandler;
     use crate::tools::handlers::TestSyncHandler;
@@ -838,6 +876,12 @@ pub(crate) fn build_specs(
         // main agent will not continue until all subagents finish.
         builder.push_spec_with_parallel_support(create_spawn_agent_tool(), true);
         builder.register_handler("spawn_agent", spawn_agent_handler);
+    }
+
+    if config.return_progress_tool {
+        let return_progress_handler = Arc::new(ReturnProgressHandler);
+        builder.push_spec(create_return_progress_tool());
+        builder.register_handler("return_progress", return_progress_handler);
     }
 
     if let Some(apply_patch_tool_type) = &config.apply_patch_tool_type {
@@ -979,6 +1023,7 @@ mod tests {
             include_view_image_tool: true,
             experimental_unified_exec_tool: true,
             include_spawn_agent_tool: false,
+            include_return_progress_tool: false,
         });
         let (tools, _) = build_specs(&config, Some(HashMap::new())).build();
 
@@ -1000,6 +1045,7 @@ mod tests {
             include_view_image_tool: true,
             experimental_unified_exec_tool: true,
             include_spawn_agent_tool: false,
+            include_return_progress_tool: false,
         });
         let (tools, _) = build_specs(&config, Some(HashMap::new())).build();
 
@@ -1023,6 +1069,7 @@ mod tests {
             include_view_image_tool: false,
             experimental_unified_exec_tool: true,
             include_spawn_agent_tool: false,
+            include_return_progress_tool: false,
         });
         let (tools, _) = build_specs(&config, None).build();
 
@@ -1045,6 +1092,7 @@ mod tests {
             include_view_image_tool: false,
             experimental_unified_exec_tool: false,
             include_spawn_agent_tool: false,
+            include_return_progress_tool: false,
         });
         let (tools, _) = build_specs(&config, None).build();
 
@@ -1078,6 +1126,7 @@ mod tests {
             include_view_image_tool: true,
             experimental_unified_exec_tool: true,
             include_spawn_agent_tool: false,
+            include_return_progress_tool: false,
         });
         let (tools, _) = build_specs(
             &config,
@@ -1184,6 +1233,7 @@ mod tests {
             include_view_image_tool: true,
             experimental_unified_exec_tool: true,
             include_spawn_agent_tool: false,
+            include_return_progress_tool: false,
         });
 
         // Intentionally construct a map with keys that would sort alphabetically.
@@ -1262,6 +1312,7 @@ mod tests {
             include_view_image_tool: true,
             experimental_unified_exec_tool: true,
             include_spawn_agent_tool: false,
+            include_return_progress_tool: false,
         });
 
         let (tools, _) = build_specs(
@@ -1332,6 +1383,7 @@ mod tests {
             include_view_image_tool: true,
             experimental_unified_exec_tool: true,
             include_spawn_agent_tool: false,
+            include_return_progress_tool: false,
         });
 
         let (tools, _) = build_specs(
@@ -1397,6 +1449,7 @@ mod tests {
             include_view_image_tool: true,
             experimental_unified_exec_tool: true,
             include_spawn_agent_tool: false,
+            include_return_progress_tool: false,
         });
 
         let (tools, _) = build_specs(
@@ -1465,6 +1518,7 @@ mod tests {
             include_view_image_tool: true,
             experimental_unified_exec_tool: true,
             include_spawn_agent_tool: false,
+            include_return_progress_tool: false,
         });
 
         let (tools, _) = build_specs(
@@ -1545,6 +1599,7 @@ mod tests {
             include_view_image_tool: true,
             experimental_unified_exec_tool: true,
             include_spawn_agent_tool: false,
+            include_return_progress_tool: false,
         });
         let (tools, _) = build_specs(
             &config,

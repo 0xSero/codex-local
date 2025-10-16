@@ -6,6 +6,7 @@ use crate::codex::INITIAL_SUBMIT_ID;
 use crate::codex::compact::content_items_to_text;
 use crate::codex::compact::is_session_prefix_message;
 use crate::codex_conversation::CodexConversation;
+use crate::child_agent_bridge::ChildAgentBridge;
 use crate::config::Config;
 use crate::error::CodexErr;
 use crate::error::Result as CodexResult;
@@ -35,6 +36,7 @@ pub struct NewConversation {
 /// maintaining them in memory.
 pub struct ConversationManager {
     conversations: Arc<RwLock<HashMap<ConversationId, Arc<CodexConversation>>>>,
+    child_agent_bridges: Arc<RwLock<HashMap<ConversationId, Arc<ChildAgentBridge>>>>,
     auth_manager: Arc<AuthManager>,
     session_source: SessionSource,
     self_arc: tokio::sync::OnceCell<Arc<Self>>,
@@ -44,6 +46,7 @@ impl ConversationManager {
     pub fn new(auth_manager: Arc<AuthManager>, session_source: SessionSource) -> Self {
         Self {
             conversations: Arc::new(RwLock::new(HashMap::new())),
+            child_agent_bridges: Arc::new(RwLock::new(HashMap::new())),
             auth_manager,
             session_source,
             self_arc: tokio::sync::OnceCell::new(),
@@ -170,7 +173,14 @@ impl ConversationManager {
         &self,
         conversation_id: &ConversationId,
     ) -> Option<Arc<CodexConversation>> {
-        self.conversations.write().await.remove(conversation_id)
+        let conversation = self
+            .conversations
+            .write()
+            .await
+            .remove(conversation_id);
+        let mut bridges = self.child_agent_bridges.write().await;
+        bridges.remove(conversation_id);
+        conversation
     }
 
     /// Fork an existing conversation by taking messages up to the given position
@@ -196,6 +206,35 @@ impl ConversationManager {
         } = Codex::spawn(config, auth_manager, history, self.session_source, self_arc).await?;
 
         self.finalize_spawn(codex, conversation_id).await
+    }
+
+    pub async fn register_child_agent_bridge(
+        &self,
+        bridge: Arc<ChildAgentBridge>,
+    ) -> anyhow::Result<()> {
+        let mut map = self.child_agent_bridges.write().await;
+        let id = bridge.conversation_id;
+        if map.contains_key(&id) {
+            anyhow::bail!("child agent bridge already registered for {id}");
+        }
+        map.insert(id, bridge);
+        Ok(())
+    }
+
+    pub async fn remove_child_agent_bridge(
+        &self,
+        conversation_id: &ConversationId,
+    ) -> Option<Arc<ChildAgentBridge>> {
+        let mut map = self.child_agent_bridges.write().await;
+        map.remove(conversation_id)
+    }
+
+    pub async fn get_child_agent_bridge(
+        &self,
+        conversation_id: &ConversationId,
+    ) -> Option<Arc<ChildAgentBridge>> {
+        let map = self.child_agent_bridges.read().await;
+        map.get(conversation_id).cloned()
     }
 }
 

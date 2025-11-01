@@ -625,6 +625,8 @@ struct ModelMenuEntry {
     model: String,
     description: Option<String>,
     options: Vec<ModelReasoningOption>,
+    context_window: Option<u64>,
+    max_output_tokens: Option<u64>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -632,6 +634,8 @@ struct ModelAggregate {
     used_by_default: bool,
     profile_names: BTreeSet<String>,
     effort_sources: Vec<EffortSources>,
+    context_window: Option<u64>,
+    max_output_tokens: Option<u64>,
 }
 
 #[derive(Debug, Clone)]
@@ -669,6 +673,16 @@ impl ModelAggregate {
             .find(|entry| entry.effort == effort)
             .map(|entry| entry.sources.iter().cloned().collect())
             .unwrap_or_default()
+    }
+
+    fn record_context(&mut self, context_window: Option<u64>, max_output_tokens: Option<u64>) {
+        if let Some(window) = context_window {
+            self.context_window = Some(self.context_window.unwrap_or(window).max(window));
+        }
+        if let Some(max_tokens) = max_output_tokens {
+            self.max_output_tokens =
+                Some(self.max_output_tokens.unwrap_or(max_tokens).max(max_tokens));
+        }
     }
 }
 
@@ -715,6 +729,7 @@ impl ChatWidget {
                 config.model_reasoning_effort,
                 "default configuration".to_string(),
             );
+            entry.record_context(config.model_context_window, config.model_max_output_tokens);
         }
 
         for (profile_name, profile) in &config.profiles {
@@ -725,6 +740,7 @@ impl ChatWidget {
                     profile.model_reasoning_effort,
                     format!("profile `{profile_name}`"),
                 );
+                entry.record_context(profile.model_context_window, profile.model_max_output_tokens);
             }
         }
 
@@ -733,6 +749,8 @@ impl ChatWidget {
             .map(|(model, aggregate)| ModelMenuEntry {
                 description: Self::model_entry_description(&model, &aggregate),
                 options: Self::build_reasoning_options(&aggregate),
+                context_window: aggregate.context_window,
+                max_output_tokens: aggregate.max_output_tokens,
                 model,
             })
             .collect();
@@ -754,6 +772,8 @@ impl ChatWidget {
             effort: None,
             label: Self::reasoning_label(None),
             description: Some(Self::reasoning_description(None, &default_sources)),
+            context_window: aggregate.context_window,
+            max_output_tokens: aggregate.max_output_tokens,
         });
 
         for effort in ReasoningEffortConfig::iter() {
@@ -762,6 +782,8 @@ impl ChatWidget {
                 effort: Some(effort),
                 label: Self::reasoning_label(Some(effort)),
                 description: Some(Self::reasoning_description(Some(effort), &sources)),
+                context_window: aggregate.context_window,
+                max_output_tokens: aggregate.max_output_tokens,
             });
         }
 
@@ -2721,6 +2743,8 @@ impl ChatWidget {
             let description = option.description.clone();
             let model_for_action = model_slug.clone();
             let effort_for_action = option.effort;
+            let context_window = option.context_window;
+            let max_output_tokens = option.max_output_tokens;
             let actions: Vec<SelectionAction> = vec![Box::new(move |tx| {
                 tx.send(AppEvent::CodexOp(Op::OverrideTurnContext {
                     cwd: None,
@@ -2730,7 +2754,11 @@ impl ChatWidget {
                     effort: Some(effort_for_action),
                     summary: None,
                 }));
-                tx.send(AppEvent::UpdateModel(model_for_action.clone()));
+                tx.send(AppEvent::UpdateModel {
+                    model: model_for_action.clone(),
+                    context_window,
+                    max_output_tokens,
+                });
                 tx.send(AppEvent::UpdateReasoningEffort(effort_for_action));
                 tx.send(AppEvent::PersistModelSelection {
                     model: model_for_action.clone(),
@@ -2823,11 +2851,24 @@ impl ChatWidget {
     }
 
     /// Set the model in the widget's config copy.
-    pub(crate) fn set_model(&mut self, model: &str) {
+    pub(crate) fn set_model(
+        &mut self,
+        model: &str,
+        context_window: Option<u64>,
+        max_output_tokens: Option<u64>,
+    ) {
         self.session_header.set_model(model);
         self.config.model = model.to_string();
+        if let Some(window) = context_window {
+            self.config.model_context_window = Some(window);
+        }
+        if let Some(max_tokens) = max_output_tokens {
+            self.config.model_max_output_tokens = Some(max_tokens);
+        }
         self.bottom_pane
             .set_current_model(self.config.model.clone());
+        // Update token display with new context window
+        self.update_token_display();
     }
 
     pub(crate) fn add_info_message(&mut self, message: String, hint: Option<String>) {

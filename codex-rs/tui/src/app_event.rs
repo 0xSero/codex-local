@@ -16,6 +16,8 @@ pub(crate) struct ModelReasoningOption {
     pub effort: Option<ReasoningEffort>,
     pub label: String,
     pub description: Option<String>,
+    pub context_window: Option<u64>,
+    pub max_output_tokens: Option<u64>,
 }
 
 #[allow(clippy::large_enum_variant)]
@@ -59,7 +61,11 @@ pub(crate) enum AppEvent {
     UpdateReasoningEffort(Option<ReasoningEffort>),
 
     /// Update the current model slug in the running app and widget.
-    UpdateModel(String),
+    UpdateModel {
+        model: String,
+        context_window: Option<u64>,
+        max_output_tokens: Option<u64>,
+    },
 
     /// Persist the selected model and reasoning effort to the appropriate config.
     PersistModelSelection {

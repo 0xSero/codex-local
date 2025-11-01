@@ -325,11 +325,22 @@ impl App {
             AppEvent::UpdateReasoningEffort(effort) => {
                 self.on_update_reasoning_effort(effort);
             }
-            AppEvent::UpdateModel(model) => {
-                self.chat_widget.set_model(&model);
+            AppEvent::UpdateModel {
+                model,
+                context_window,
+                max_output_tokens,
+            } => {
+                self.chat_widget
+                    .set_model(&model, context_window, max_output_tokens);
                 self.config.model = model.clone();
                 if let Some(family) = find_family_for_model(&model) {
                     self.config.model_family = family;
+                }
+                if let Some(window) = context_window {
+                    self.config.model_context_window = Some(window);
+                }
+                if let Some(max_tokens) = max_output_tokens {
+                    self.config.model_max_output_tokens = Some(max_tokens);
                 }
             }
             AppEvent::OpenReasoningPopup { model, options } => {

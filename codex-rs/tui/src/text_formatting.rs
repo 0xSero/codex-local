@@ -65,26 +65,43 @@ pub(crate) fn format_xml_thinking_blocks(text: &str) -> String {
                                 && !block_content.chars().all(char::is_whitespace)
                                 && !block_content.is_empty()
                             {
-                                // Render the thinking block with proper borders
+                                // Render the thinking block with proper borders and ANSI colors
+                                // Using ANSI escape codes for cyan borders and dim content
+                                const CYAN: &str = "\x1b[36m";
+                                const RESET: &str = "\x1b[0m";
+                                const DIM: &str = "\x1b[2m";
+
                                 result.push('\n');
+                                result.push_str(CYAN);
                                 result.push_str("╭─ 💭 Thinking ");
                                 result.push_str(&"─".repeat(BOX_WIDTH - 16));
                                 result.push_str("╮\n");
+                                result.push_str(RESET);
 
-                                // Wrap and render content
+                                // Wrap and render content with dim styling
                                 for line in textwrap::wrap(block_content, CONTENT_WIDTH) {
-                                    result.push_str("│ ");
+                                    result.push_str(CYAN);
+                                    result.push_str("│");
+                                    result.push_str(RESET);
+                                    result.push_str(DIM);
+                                    result.push(' ');
                                     result.push_str(&line);
                                     // Pad to content width
                                     let padding = CONTENT_WIDTH
                                         .saturating_sub(UnicodeWidthStr::width(line.as_ref()));
                                     result.push_str(&" ".repeat(padding));
-                                    result.push_str(" │\n");
+                                    result.push(' ');
+                                    result.push_str(RESET);
+                                    result.push_str(CYAN);
+                                    result.push_str("│\n");
+                                    result.push_str(RESET);
                                 }
 
+                                result.push_str(CYAN);
                                 result.push('╰');
                                 result.push_str(&"─".repeat(BOX_WIDTH - 2));
                                 result.push_str("╯\n");
+                                result.push_str(RESET);
                             }
 
                             // Skip past the closing tag

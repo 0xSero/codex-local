@@ -1,12 +1,12 @@
 use crate::AuthManager;
 use crate::CodexAuth;
+use crate::child_agent_bridge::ChildAgentBridge;
 use crate::codex::Codex;
 use crate::codex::CodexSpawnOk;
 use crate::codex::INITIAL_SUBMIT_ID;
 use crate::codex::compact::content_items_to_text;
 use crate::codex::compact::is_session_prefix_message;
 use crate::codex_conversation::CodexConversation;
-use crate::child_agent_bridge::ChildAgentBridge;
 use crate::config::Config;
 use crate::error::CodexErr;
 use crate::error::Result as CodexResult;
@@ -173,11 +173,7 @@ impl ConversationManager {
         &self,
         conversation_id: &ConversationId,
     ) -> Option<Arc<CodexConversation>> {
-        let conversation = self
-            .conversations
-            .write()
-            .await
-            .remove(conversation_id);
+        let conversation = self.conversations.write().await.remove(conversation_id);
         let mut bridges = self.child_agent_bridges.write().await;
         bridges.remove(conversation_id);
         conversation

@@ -364,7 +364,9 @@ impl ToolHandler for SpawnAgentHandler {
                             .clone()
                             .unwrap_or_else(|| fallback_message.clone());
                         if bridge_final_markdown.is_none() {
-                            bridge_for_monitor.set_final_markdown(summary_body.clone()).await;
+                            bridge_for_monitor
+                                .set_final_markdown(summary_body.clone())
+                                .await;
                         }
 
                         let summary_heading = if truncated && bridge_final_markdown.is_none() {
@@ -558,7 +560,6 @@ impl ToolHandler for SpawnAgentHandler {
             let _ = conversation_manager_for_monitor
                 .remove_child_agent_bridge(&child_conversation_id_for_monitor)
                 .await;
-
         });
 
         // Block until we receive the subagent outcome, then return its

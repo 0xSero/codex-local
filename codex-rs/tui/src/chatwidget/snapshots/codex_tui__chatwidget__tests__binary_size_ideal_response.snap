@@ -112,7 +112,7 @@ expression: "lines[start_idx..].join(\"\\n\")"
   "Main Causes" and "Build-Mode Notes." I can also include brief suggestions for
   reducing size, but I want to stay focused on answering the user's question.
 
-─ Worked for <duration> ───────────────────────────────────────────────────────────────
+─ Worked for <duration> ────────────────────────────────────────────────────────────────
 
 • Here’s what’s driving size in this workspace’s binaries.
 

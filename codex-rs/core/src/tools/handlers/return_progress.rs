@@ -29,9 +29,7 @@ impl ToolHandler for ReturnProgressHandler {
 
     async fn handle(&self, invocation: ToolInvocation) -> Result<ToolOutput, FunctionCallError> {
         let ToolInvocation {
-            session,
-            payload,
-            ..
+            session, payload, ..
         } = invocation;
 
         let arguments = match payload {

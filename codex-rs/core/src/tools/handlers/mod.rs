@@ -5,12 +5,12 @@ mod list_dir;
 mod mcp;
 mod plan;
 mod read_file;
+mod return_progress;
 mod shell;
 mod spawn_agent;
 mod test_sync;
 mod unified_exec;
 mod view_image;
-mod return_progress;
 
 pub use plan::PLAN_TOOL;
 
@@ -21,9 +21,9 @@ pub use list_dir::ListDirHandler;
 pub use mcp::McpHandler;
 pub use plan::PlanHandler;
 pub use read_file::ReadFileHandler;
+pub use return_progress::ReturnProgressHandler;
 pub use shell::ShellHandler;
 pub use spawn_agent::SpawnAgentHandler;
-pub use return_progress::ReturnProgressHandler;
 pub use test_sync::TestSyncHandler;
 pub use unified_exec::UnifiedExecHandler;
 pub use view_image::ViewImageHandler;

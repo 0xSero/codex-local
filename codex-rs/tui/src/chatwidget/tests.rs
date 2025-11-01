@@ -4,12 +4,12 @@ use crate::app_event_sender::AppEventSender;
 use crate::test_backend::VT100Backend;
 use crate::tui::FrameRequester;
 use assert_matches::assert_matches;
-use codex_core::AuthManager;
 use codex_core::CodexAuth;
 use codex_core::config::Config;
 use codex_core::config::ConfigOverrides;
 use codex_core::config::ConfigToml;
 use codex_core::config::OPENAI_DEFAULT_MODEL;
+use codex_core::config_profile::ConfigProfile;
 use codex_core::protocol::AgentMessageDeltaEvent;
 use codex_core::protocol::AgentMessageEvent;
 use codex_core::protocol::AgentReasoningDeltaEvent;
@@ -44,6 +44,7 @@ use crossterm::event::KeyEvent;
 use crossterm::event::KeyModifiers;
 use insta::assert_snapshot;
 use pretty_assertions::assert_eq;
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufRead;
 use std::io::BufReader;
@@ -224,7 +225,6 @@ async fn helpers_are_available_and_do_not_panic() {
     let conversation_manager = Arc::new(ConversationManager::with_auth(CodexAuth::from_api_key(
         "test",
     )));
-    let auth_manager = AuthManager::from_auth_for_testing(CodexAuth::from_api_key("test"));
     let init = ChatWidgetInit {
         config: cfg,
         frame_requester: FrameRequester::test_dummy(),
@@ -232,7 +232,6 @@ async fn helpers_are_available_and_do_not_panic() {
         initial_prompt: None,
         initial_images: Vec::new(),
         enhanced_keys_supported: false,
-        auth_manager,
     };
     let mut w = ChatWidget::new(init, conversation_manager);
     // Basic construction sanity.
@@ -245,10 +244,21 @@ fn make_chatwidget_manual() -> (
     tokio::sync::mpsc::UnboundedReceiver<AppEvent>,
     tokio::sync::mpsc::UnboundedReceiver<Op>,
 ) {
+    make_chatwidget_manual_with_profiles(HashMap::new())
+}
+
+fn make_chatwidget_manual_with_profiles(
+    profiles: HashMap<String, ConfigProfile>,
+) -> (
+    ChatWidget,
+    tokio::sync::mpsc::UnboundedReceiver<AppEvent>,
+    tokio::sync::mpsc::UnboundedReceiver<Op>,
+) {
     let (tx_raw, rx) = unbounded_channel::<AppEvent>();
     let app_event_tx = AppEventSender::new(tx_raw);
     let (op_tx, op_rx) = unbounded_channel::<Op>();
-    let cfg = test_config();
+    let mut cfg = test_config();
+    cfg.profiles = profiles;
     let bottom = BottomPane::new(BottomPaneParams {
         app_event_tx: app_event_tx.clone(),
         frame_requester: FrameRequester::test_dummy(),
@@ -257,14 +267,14 @@ fn make_chatwidget_manual() -> (
         placeholder_text: "Ask Codex to do anything".to_string(),
         disable_paste_burst: false,
     });
-    let auth_manager = AuthManager::from_auth_for_testing(CodexAuth::from_api_key("test"));
+    let model_menu_entries = ChatWidget::build_model_menu_entries(&cfg);
     let widget = ChatWidget {
         app_event_tx,
         codex_op_tx: op_tx,
         bottom_pane: bottom,
         active_cell: None,
         config: cfg.clone(),
-        auth_manager,
+        model_menu_entries,
         session_header: SessionHeader::new(cfg.model),
         initial_user_message: None,
         token_info: None,
@@ -309,6 +319,57 @@ pub(crate) fn make_chatwidget_manual_with_sender() -> (
     let (widget, rx, op_rx) = make_chatwidget_manual();
     let app_event_tx = widget.app_event_tx.clone();
     (widget, app_event_tx, rx, op_rx)
+}
+
+fn sample_profiles() -> HashMap<String, ConfigProfile> {
+    let mut profiles = HashMap::new();
+
+    profiles.insert(
+        "research".to_string(),
+        ConfigProfile {
+            model: Some("gpt-5".to_string()),
+            model_reasoning_effort: Some(ReasoningEffortConfig::High),
+            ..ConfigProfile::default()
+        },
+    );
+
+    profiles.insert(
+        "fast".to_string(),
+        ConfigProfile {
+            model: Some("gpt-4o-mini".to_string()),
+            model_reasoning_effort: Some(ReasoningEffortConfig::Low),
+            ..ConfigProfile::default()
+        },
+    );
+
+    profiles
+}
+
+#[test]
+fn model_popup_lists_minimax_profile() {
+    let mut profiles = HashMap::new();
+    profiles.insert(
+        "MiniMax-m2".to_string(),
+        ConfigProfile {
+            model: Some("MiniMax-m2".to_string()),
+            model_reasoning_effort: Some(ReasoningEffortConfig::Medium),
+            ..ConfigProfile::default()
+        },
+    );
+
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual_with_profiles(profiles);
+
+    chat.open_model_popup();
+    let popup = render_bottom_popup(&chat, 80);
+
+    assert!(
+        popup.contains("MiniMax-m2"),
+        "model popup should mention MiniMax-m2 profile: {popup}"
+    );
+    assert!(
+        popup.contains("Profiles: MiniMax-m2"),
+        "model popup should show profile hint for MiniMax-m2: {popup}"
+    );
 }
 
 fn drain_insert_history(
@@ -1052,7 +1113,7 @@ fn render_bottom_popup(chat: &ChatWidget, width: u16) -> String {
 
 #[test]
 fn model_selection_popup_snapshot() {
-    let (mut chat, _rx, _op_rx) = make_chatwidget_manual();
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual_with_profiles(sample_profiles());
 
     chat.config.model = "gpt-5-codex".to_string();
     chat.open_model_popup();
@@ -1068,11 +1129,13 @@ fn model_reasoning_selection_popup_snapshot() {
     chat.config.model = "gpt-5-codex".to_string();
     chat.config.model_reasoning_effort = Some(ReasoningEffortConfig::High);
 
-    let presets = builtin_model_presets(None)
-        .into_iter()
-        .filter(|preset| preset.model == "gpt-5-codex")
-        .collect::<Vec<_>>();
-    chat.open_reasoning_popup("gpt-5-codex".to_string(), presets);
+    let options = chat
+        .model_menu_entries
+        .iter()
+        .find(|entry| entry.model == "gpt-5-codex")
+        .map(|entry| entry.options.clone())
+        .expect("expected default model entry");
+    chat.open_reasoning_popup("gpt-5-codex".to_string(), options);
 
     let popup = render_bottom_popup(&chat, 80);
     assert_snapshot!("model_reasoning_selection_popup", popup);
@@ -1085,11 +1148,13 @@ fn reasoning_popup_escape_returns_to_model_popup() {
     chat.config.model = "gpt-5".to_string();
     chat.open_model_popup();
 
-    let presets = builtin_model_presets(None)
-        .into_iter()
-        .filter(|preset| preset.model == "gpt-5-codex")
-        .collect::<Vec<_>>();
-    chat.open_reasoning_popup("gpt-5-codex".to_string(), presets);
+    let options = chat
+        .model_menu_entries
+        .iter()
+        .find(|entry| entry.model == "gpt-5-codex")
+        .map(|entry| entry.options.clone())
+        .expect("expected gpt-5-codex entry");
+    chat.open_reasoning_popup("gpt-5-codex".to_string(), options);
 
     let before_escape = render_bottom_popup(&chat, 80);
     assert!(before_escape.contains("Select Reasoning Level"));

@@ -1,6 +1,5 @@
 use std::path::PathBuf;
 
-use codex_common::model_presets::ModelPreset;
 use codex_core::protocol::ConversationPathResponseEvent;
 use codex_core::protocol::Event;
 use codex_file_search::FileMatch;
@@ -11,6 +10,13 @@ use crate::history_cell::HistoryCell;
 use codex_core::protocol::AskForApproval;
 use codex_core::protocol::SandboxPolicy;
 use codex_core::protocol_config_types::ReasoningEffort;
+
+#[derive(Debug, Clone)]
+pub(crate) struct ModelReasoningOption {
+    pub effort: Option<ReasoningEffort>,
+    pub label: String,
+    pub description: Option<String>,
+}
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
@@ -64,7 +70,7 @@ pub(crate) enum AppEvent {
     /// Open the reasoning selection popup after picking a model.
     OpenReasoningPopup {
         model: String,
-        presets: Vec<ModelPreset>,
+        options: Vec<ModelReasoningOption>,
     },
 
     /// Update the current approval policy in the running app and widget.

@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::path::PathBuf;
@@ -65,6 +67,7 @@ use tokio::sync::mpsc::UnboundedSender;
 use tracing::debug;
 
 use crate::app_event::AppEvent;
+use crate::app_event::ModelReasoningOption;
 use crate::app_event_sender::AppEventSender;
 use crate::bottom_pane::ApprovalRequest;
 use crate::bottom_pane::BottomPane;
@@ -107,9 +110,6 @@ use std::path::Path;
 use chrono::Local;
 use codex_common::approval_presets::ApprovalPreset;
 use codex_common::approval_presets::builtin_approval_presets;
-use codex_common::model_presets::ModelPreset;
-use codex_common::model_presets::builtin_model_presets;
-use codex_core::AuthManager;
 use codex_core::ConversationManager;
 use codex_core::protocol::AskForApproval;
 use codex_core::protocol::SandboxPolicy;
@@ -559,7 +559,6 @@ pub(crate) struct ChatWidgetInit {
     pub(crate) initial_prompt: Option<String>,
     pub(crate) initial_images: Vec<PathBuf>,
     pub(crate) enhanced_keys_supported: bool,
-    pub(crate) auth_manager: Arc<AuthManager>,
 }
 
 pub(crate) struct ChatWidget {
@@ -568,7 +567,7 @@ pub(crate) struct ChatWidget {
     bottom_pane: BottomPane,
     active_cell: Option<Box<dyn HistoryCell>>,
     config: Config,
-    auth_manager: Arc<AuthManager>,
+    model_menu_entries: Vec<ModelMenuEntry>,
     session_header: SessionHeader,
     initial_user_message: Option<UserMessage>,
     token_info: Option<TokenUsageInfo>,
@@ -621,6 +620,58 @@ pub(crate) struct ChatWidget {
     active_subagent: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+struct ModelMenuEntry {
+    model: String,
+    description: Option<String>,
+    options: Vec<ModelReasoningOption>,
+}
+
+#[derive(Debug, Default, Clone)]
+struct ModelAggregate {
+    used_by_default: bool,
+    profile_names: BTreeSet<String>,
+    effort_sources: Vec<EffortSources>,
+}
+
+#[derive(Debug, Clone)]
+struct EffortSources {
+    effort: Option<ReasoningEffortConfig>,
+    sources: BTreeSet<String>,
+}
+
+impl ModelAggregate {
+    fn mark_default(&mut self) {
+        self.used_by_default = true;
+    }
+
+    fn add_profile(&mut self, name: &str) {
+        self.profile_names.insert(name.to_string());
+    }
+
+    fn record_source(&mut self, effort: Option<ReasoningEffortConfig>, label: String) {
+        if let Some(entry) = self
+            .effort_sources
+            .iter_mut()
+            .find(|entry| entry.effort == effort)
+        {
+            entry.sources.insert(label);
+        } else {
+            let mut sources = BTreeSet::new();
+            sources.insert(label);
+            self.effort_sources.push(EffortSources { effort, sources });
+        }
+    }
+
+    fn sources_for(&self, effort: Option<ReasoningEffortConfig>) -> Vec<String> {
+        self.effort_sources
+            .iter()
+            .find(|entry| entry.effort == effort)
+            .map(|entry| entry.sources.iter().cloned().collect())
+            .unwrap_or_default()
+    }
+}
+
 struct UserMessage {
     text: String,
     image_paths: Vec<PathBuf>,
@@ -651,6 +702,126 @@ impl ChatWidget {
             Some("Broad world knowledge with strong general reasoning.")
         } else {
             None
+        }
+    }
+
+    fn build_model_menu_entries(config: &Config) -> Vec<ModelMenuEntry> {
+        let mut aggregates: BTreeMap<String, ModelAggregate> = BTreeMap::new();
+
+        {
+            let entry = aggregates.entry(config.model.clone()).or_default();
+            entry.mark_default();
+            entry.record_source(
+                config.model_reasoning_effort,
+                "default configuration".to_string(),
+            );
+        }
+
+        for (profile_name, profile) in &config.profiles {
+            if let Some(model) = &profile.model {
+                let entry = aggregates.entry(model.clone()).or_default();
+                entry.add_profile(profile_name);
+                entry.record_source(
+                    profile.model_reasoning_effort,
+                    format!("profile `{profile_name}`"),
+                );
+            }
+        }
+
+        let mut entries: Vec<ModelMenuEntry> = aggregates
+            .into_iter()
+            .map(|(model, aggregate)| ModelMenuEntry {
+                description: Self::model_entry_description(&model, &aggregate),
+                options: Self::build_reasoning_options(&aggregate),
+                model,
+            })
+            .collect();
+
+        entries.sort_by(|a, b| a.model.cmp(&b.model));
+        if let Some(idx) = entries.iter().position(|entry| entry.model == config.model) {
+            let current = entries.remove(idx);
+            entries.insert(0, current);
+        }
+
+        entries
+    }
+
+    fn build_reasoning_options(aggregate: &ModelAggregate) -> Vec<ModelReasoningOption> {
+        let mut options = Vec::new();
+
+        let default_sources = aggregate.sources_for(None);
+        options.push(ModelReasoningOption {
+            effort: None,
+            label: Self::reasoning_label(None),
+            description: Some(Self::reasoning_description(None, &default_sources)),
+        });
+
+        for effort in ReasoningEffortConfig::iter() {
+            let sources = aggregate.sources_for(Some(effort));
+            options.push(ModelReasoningOption {
+                effort: Some(effort),
+                label: Self::reasoning_label(Some(effort)),
+                description: Some(Self::reasoning_description(Some(effort), &sources)),
+            });
+        }
+
+        options
+    }
+
+    fn model_entry_description(model: &str, aggregate: &ModelAggregate) -> Option<String> {
+        let mut parts: Vec<String> = Vec::new();
+        if let Some(base) = Self::model_description_for(model) {
+            parts.push(base.to_string());
+        }
+        if aggregate.used_by_default {
+            parts.push("Default configuration".to_string());
+        }
+        if !aggregate.profile_names.is_empty() {
+            let names: Vec<String> = aggregate.profile_names.iter().cloned().collect();
+            parts.push(format!("Profiles: {}", names.join(", ")));
+        }
+        if parts.is_empty() {
+            None
+        } else {
+            Some(parts.join(" • "))
+        }
+    }
+
+    fn reasoning_label(effort: Option<ReasoningEffortConfig>) -> String {
+        match effort {
+            None => "Model default".to_string(),
+            Some(ReasoningEffortConfig::Minimal) => "Minimal".to_string(),
+            Some(ReasoningEffortConfig::Low) => "Low".to_string(),
+            Some(ReasoningEffortConfig::Medium) => "Medium".to_string(),
+            Some(ReasoningEffortConfig::High) => "High".to_string(),
+        }
+    }
+
+    fn reasoning_description(effort: Option<ReasoningEffortConfig>, sources: &[String]) -> String {
+        let mut parts = vec![Self::base_reasoning_text(effort).to_string()];
+        if !sources.is_empty() {
+            parts.push(Self::format_sources(sources));
+        }
+        parts.join(" • ")
+    }
+
+    fn base_reasoning_text(effort: Option<ReasoningEffortConfig>) -> &'static str {
+        match effort {
+            None => "Use the provider's default reasoning level.",
+            Some(ReasoningEffortConfig::Minimal) => "Fastest responses with little reasoning.",
+            Some(ReasoningEffortConfig::Low) => "Balances speed with some reasoning.",
+            Some(ReasoningEffortConfig::Medium) => {
+                "Provides a balance of reasoning depth and latency."
+            }
+            Some(ReasoningEffortConfig::High) => "Maximizes reasoning depth for complex work.",
+        }
+    }
+
+    fn format_sources(sources: &[String]) -> String {
+        if sources.len() == 1 {
+            format!("Configured in {}", sources[0])
+        } else {
+            format!("Configured in {}", sources.join(", "))
         }
     }
 
@@ -1455,8 +1626,8 @@ impl ChatWidget {
             initial_prompt,
             initial_images,
             enhanced_keys_supported,
-            auth_manager,
         } = common;
+        let model_menu_entries = Self::build_model_menu_entries(&config);
         let mut rng = rand::rng();
         let placeholder = EXAMPLE_PROMPTS[rng.random_range(0..EXAMPLE_PROMPTS.len())].to_string();
         let codex_op_tx = spawn_agent(config.clone(), app_event_tx.clone(), conversation_manager);
@@ -1475,7 +1646,7 @@ impl ChatWidget {
             }),
             active_cell: None,
             config: config.clone(),
-            auth_manager,
+            model_menu_entries,
             session_header: SessionHeader::new(config.model),
             initial_user_message: create_initial_user_message(
                 initial_prompt.unwrap_or_default(),
@@ -1533,8 +1704,8 @@ impl ChatWidget {
             initial_prompt,
             initial_images,
             enhanced_keys_supported,
-            auth_manager,
         } = common;
+        let model_menu_entries = Self::build_model_menu_entries(&config);
         let mut rng = rand::rng();
         let placeholder = EXAMPLE_PROMPTS[rng.random_range(0..EXAMPLE_PROMPTS.len())].to_string();
 
@@ -1555,7 +1726,7 @@ impl ChatWidget {
             }),
             active_cell: None,
             config: config.clone(),
-            auth_manager,
+            model_menu_entries,
             session_header: SessionHeader::new(config.model),
             initial_user_message: create_initial_user_message(
                 initial_prompt.unwrap_or_default(),
@@ -2492,42 +2663,20 @@ impl ChatWidget {
     /// a second popup is shown to choose the reasoning effort.
     pub(crate) fn open_model_popup(&mut self) {
         let current_model = self.config.model.clone();
-        let auth_mode = self.auth_manager.auth().map(|auth| auth.mode);
-        let presets: Vec<ModelPreset> = builtin_model_presets(auth_mode);
-
-        let mut grouped: Vec<(&str, Vec<ModelPreset>)> = Vec::new();
-        for preset in presets.into_iter() {
-            if let Some((_, entries)) = grouped.iter_mut().find(|(model, _)| *model == preset.model)
-            {
-                entries.push(preset);
-            } else {
-                grouped.push((preset.model, vec![preset]));
-            }
-        }
-
         let mut items: Vec<SelectionItem> = Vec::new();
-        for (model_slug, entries) in grouped.into_iter() {
-            let name = model_slug.to_string();
-            let description = Self::model_description_for(model_slug)
-                .map(std::string::ToString::to_string)
-                .or_else(|| {
-                    entries
-                        .iter()
-                        .find(|preset| !preset.description.is_empty())
-                        .map(|preset| preset.description.to_string())
-                })
-                .or_else(|| entries.first().map(|preset| preset.description.to_string()));
-            let is_current = model_slug == current_model;
-            let model_slug_string = model_slug.to_string();
-            let presets_for_model = entries.clone();
+        for entry in &self.model_menu_entries {
+            let is_current = entry.model == current_model;
+            let model_slug = entry.model.clone();
+            let description = entry.description.clone();
+            let options = entry.options.clone();
             let actions: Vec<SelectionAction> = vec![Box::new(move |tx| {
                 tx.send(AppEvent::OpenReasoningPopup {
-                    model: model_slug_string.clone(),
-                    presets: presets_for_model.clone(),
+                    model: model_slug.clone(),
+                    options: options.clone(),
                 });
             })];
             items.push(SelectionItem {
-                name,
+                name: entry.model.clone(),
                 description,
                 is_current,
                 actions,
@@ -2546,81 +2695,32 @@ impl ChatWidget {
     }
 
     /// Open a popup to choose the reasoning effort (stage 2) for the given model.
-    pub(crate) fn open_reasoning_popup(&mut self, model_slug: String, presets: Vec<ModelPreset>) {
+    pub(crate) fn open_reasoning_popup(
+        &mut self,
+        model_slug: String,
+        options: Vec<ModelReasoningOption>,
+    ) {
         let default_effort = ReasoningEffortConfig::default();
 
-        let has_none_choice = presets.iter().any(|preset| preset.effort.is_none());
-        struct EffortChoice {
-            stored: Option<ReasoningEffortConfig>,
-            display: ReasoningEffortConfig,
-        }
-        let mut choices: Vec<EffortChoice> = Vec::new();
-        for effort in ReasoningEffortConfig::iter() {
-            if presets.iter().any(|preset| preset.effort == Some(effort)) {
-                choices.push(EffortChoice {
-                    stored: Some(effort),
-                    display: effort,
-                });
-            }
-            if has_none_choice && default_effort == effort {
-                choices.push(EffortChoice {
-                    stored: None,
-                    display: effort,
-                });
-            }
-        }
-        if choices.is_empty() {
-            choices.push(EffortChoice {
-                stored: Some(default_effort),
-                display: default_effort,
-            });
-        }
-
+        let is_current_model = self.config.model == model_slug;
+        let has_none_choice = options.iter().any(|option| option.effort.is_none());
         let default_choice: Option<ReasoningEffortConfig> = if has_none_choice {
             None
-        } else if choices
-            .iter()
-            .any(|choice| choice.stored == Some(default_effort))
-        {
-            Some(default_effort)
         } else {
-            choices
-                .iter()
-                .find_map(|choice| choice.stored)
-                .or(Some(default_effort))
+            Some(default_effort)
         };
-
-        let is_current_model = self.config.model == model_slug;
         let highlight_choice = if is_current_model {
-            self.config.model_reasoning_effort
+            self.config.model_reasoning_effort.or(default_choice)
         } else {
             default_choice
         };
 
         let mut items: Vec<SelectionItem> = Vec::new();
-        for choice in choices.iter() {
-            let effort = choice.display;
-            let mut effort_label = effort.to_string();
-            if let Some(first) = effort_label.get_mut(0..1) {
-                first.make_ascii_uppercase();
-            }
-            if choice.stored == default_choice {
-                effort_label.push_str(" (default)");
-            }
-
-            let description = presets
-                .iter()
-                .find(|preset| preset.effort == choice.stored && !preset.description.is_empty())
-                .map(|preset| preset.description.to_string())
-                .or_else(|| {
-                    presets
-                        .iter()
-                        .find(|preset| preset.effort == choice.stored)
-                        .map(|preset| preset.description.to_string())
-                });
-
+        for option in options {
+            let effort_label = option.label.clone();
+            let description = option.description.clone();
             let model_for_action = model_slug.clone();
-            let effort_for_action = choice.stored;
+            let effort_for_action = option.effort;
             let actions: Vec<SelectionAction> = vec![Box::new(move |tx| {
                 tx.send(AppEvent::CodexOp(Op::OverrideTurnContext {
                     cwd: None,
@@ -2648,7 +2748,7 @@ impl ChatWidget {
             items.push(SelectionItem {
                 name: effort_label,
                 description,
-                is_current: is_current_model && choice.stored == highlight_choice,
+                is_current: is_current_model && effort_for_action == highlight_choice,
                 actions,
                 dismiss_on_select: true,
                 ..Default::default()

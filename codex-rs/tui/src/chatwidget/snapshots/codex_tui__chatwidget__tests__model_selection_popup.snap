@@ -5,8 +5,10 @@ expression: popup
   Select Model and Effort
   Switch the model for this and future Codex CLI sessions
 
-› 1. gpt-5-codex (current)  Optimized for coding tasks with many tools.
-  2. gpt-5                  Broad world knowledge with strong general
-                            reasoning.
+› 1. gpt-5-codex (current)  Optimized for coding tasks with many tools. •
+                            Default configuration
+  2. gpt-4o-mini            Profiles: fast
+  3. gpt-5                  Broad world knowledge with strong general
+                            reasoning. • Profiles: research
 
   Press enter to select reasoning effort, or esc to dismiss.

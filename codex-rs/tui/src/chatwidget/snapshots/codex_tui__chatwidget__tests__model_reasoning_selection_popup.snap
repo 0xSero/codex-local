@@ -5,9 +5,11 @@ expression: popup
   Select Reasoning Level
   Reasoning for model gpt-5-codex
 
-  1. Low               Fastest responses with limited reasoning
-  2. Medium (default)  Dynamically adjusts reasoning based on the task
-› 3. High (current)    Maximizes reasoning depth for complex or ambiguous
-                       problems
+  1. Model default   Use the provider's default reasoning level. • Configured
+                     in default configuration
+  2. Minimal         Fastest responses with little reasoning.
+  3. Low             Balances speed with some reasoning.
+  4. Medium          Provides a balance of reasoning depth and latency.
+› 5. High (current)  Maximizes reasoning depth for complex work.
 
   Press enter to confirm or esc to go back

@@ -743,7 +743,11 @@ async fn process_sse<S>(
             // The fix is to forward the incremental events *as they come* and
             // drop the duplicated list inside `response.completed`.
             "response.output_item.done" => {
-                let Some(item_val) = event.item else { continue };
+                let Some(mut item_val) = event.item else { continue };
+
+                // Transform MiniMax XML tool calls to standard JSON format
+                crate::minimax_transformer::transform_minimax_tool_calls(&mut item_val);
+
                 let Ok(item) = serde_json::from_value::<ResponseItem>(item_val) else {
                     debug!("failed to parse ResponseItem from output_item.done");
                     continue;

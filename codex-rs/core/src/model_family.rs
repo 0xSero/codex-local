@@ -5,6 +5,7 @@ use crate::tools::handlers::apply_patch::ApplyPatchToolType;
 /// with this content.
 const BASE_INSTRUCTIONS: &str = include_str!("../prompt.md");
 const GPT_5_CODEX_INSTRUCTIONS: &str = include_str!("../gpt_5_codex_prompt.md");
+const MINIMAX_INSTRUCTIONS: &str = include_str!("../minimax_prompt.md");
 
 /// A model family is a group of models that share certain characteristics.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -112,6 +113,12 @@ pub fn find_family_for_model(mut slug: &str) -> Option<ModelFamily> {
         model_family!(slug, "gpt-4o", needs_special_apply_patch_instructions: true)
     } else if slug.starts_with("gpt-3.5") {
         model_family!(slug, "gpt-3.5", needs_special_apply_patch_instructions: true)
+    } else if slug.to_lowercase().contains("minimax") {
+        model_family!(
+            slug, "minimax",
+            base_instructions: MINIMAX_INSTRUCTIONS.to_string(),
+            needs_special_apply_patch_instructions: true,
+        )
     } else if slug.starts_with("test-gpt-5-codex") {
         model_family!(
             slug, slug,

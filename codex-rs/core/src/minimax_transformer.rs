@@ -2,7 +2,12 @@ use serde_json::{json, Value};
 
 /// Transform MiniMax-style XML tool calls into standard JSON ResponseItem format.
 ///
-/// MiniMax models output tool calls in XML format:
+/// This function serves as a **fallback parser** for MiniMax models that output XML
+/// tool calls despite being instructed to use JSON format. The system prompt now
+/// explicitly requests JSON format, but this transformer ensures compatibility if
+/// the model reverts to its native XML format.
+///
+/// MiniMax models may output tool calls in XML format:
 /// ```xml
 /// <minimax:tool_call>
 /// <invoke name="function_name">
